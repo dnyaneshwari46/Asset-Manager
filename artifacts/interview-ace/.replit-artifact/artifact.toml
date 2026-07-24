@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "InterviewAce AI"
+version = "1.0.0"
+id = "artifacts/interview-ace"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18701
+
+[services.development]
+run = "pnpm --filter @workspace/interview-ace run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/interview-ace", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/interview-ace/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18701"
+BASE_PATH = "/"

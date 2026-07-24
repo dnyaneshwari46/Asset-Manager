@@ -1,0 +1,290 @@
+You are a senior software architect, UI/UX designer, and full-stack engineer.
+
+Build a production-quality AI-powered career preparation platform named InterviewAce AI.
+
+Important Requirements
+
+- Do NOT use any paid APIs.
+- Do NOT require an OpenAI API key.
+- Use only free or open-source technologies.
+- The website must be fully responsive.
+- Use modern animations and a professional UI.
+- Write clean, modular, production-ready code.
+- Include comments and documentation.
+
+---
+
+Tech Stack
+
+Frontend
+
+- React
+- Vite
+- Tailwind CSS
+- React Router
+- Framer Motion
+
+Backend
+
+- Node.js
+- Express.js
+
+Database
+
+- Supabase (Free Tier)
+
+Authentication
+
+- Supabase Auth
+- Email/password
+- Google Login
+
+AI
+
+- Google Gemini Free API (optional)
+- Hugging Face Inference API (free tier)
+- Ollama support for local AI models
+
+Resume Parsing
+
+- pdf-parse
+- mammoth
+
+PDF Generation
+
+- react-pdf or pdf-lib
+
+Charts
+
+- Chart.js
+
+Deployment
+
+- Frontend: Vercel
+- Backend: Render
+- Database: Supabase
+
+---
+
+Landing Page
+
+Create a premium homepage with:
+
+- Hero section
+- Animated background
+- Feature cards
+- Testimonials
+- Pricing (Free plan only)
+- FAQ
+- Contact section
+- Footer
+
+---
+
+User Authentication
+
+Implement:
+
+- Sign Up
+- Login
+- Forgot Password
+- Google Login
+- Email verification
+- Profile page
+
+---
+
+Dashboard
+
+Display:
+
+- Welcome message
+- Resume score
+- Interview history
+- Coding score
+- Communication score
+- Weak topics
+- Recommended learning
+- Progress charts
+
+---
+
+Resume Builder
+
+Allow users to:
+
+- Create resumes
+- Edit resumes
+- Save multiple resumes
+- ATS-friendly templates
+- Live preview
+- Export as PDF
+- Download instantly
+
+Sections:
+
+- Personal Details
+- Education
+- Skills
+- Experience
+- Projects
+- Certifications
+- Languages
+- Achievements
+
+---
+
+Resume Analyzer
+
+Users upload PDF/DOCX.
+
+The system should:
+
+- Extract text
+- Analyze ATS compatibility
+- Detect missing skills
+- Grammar suggestions
+- Keyword suggestions
+- Resume score (0–100)
+- Show improvement recommendations
+
+---
+
+AI Mock Interview
+
+Allow users to choose:
+
+- Java
+- Python
+- MERN
+- Full Stack
+- Data Analyst
+- Data Science
+- AI/ML
+- HR Interview
+
+Difficulty:
+
+- Beginner
+- Intermediate
+- Advanced
+
+Interview Flow:
+
+- AI asks questions
+- User answers by text or voice
+- AI evaluates every answer
+- Gives:
+  - Technical score
+  - Communication score
+  - Confidence score
+  - Correct answer
+  - Improvement suggestions
+
+Store all interview history.
+
+---
+
+Coding Interview
+
+Include:
+
+- Monaco Code Editor
+- Multiple programming languages
+- Sample coding questions
+- Hidden test cases
+- Time limit
+- Run code
+- Score submissions
+- AI code review
+- Complexity analysis
+- Suggestions
+
+---
+
+Learning Dashboard
+
+Generate:
+
+- Weak topics
+- Strong topics
+- Practice roadmap
+- Recommended videos
+- Personalized improvement plan
+
+---
+
+Admin Panel
+
+Admin can:
+
+- View users
+- Delete users
+- View interviews
+- View resumes
+- Manage questions
+- View analytics
+
+---
+
+UI Requirements
+
+Use:
+
+- Glassmorphism
+- Smooth animations
+- Dark mode
+- Light mode
+- Responsive design
+- Professional dashboard
+- Loading animations
+- Toast notifications
+- Beautiful charts
+
+---
+
+Security
+
+Implement:
+
+- JWT authentication
+- Password hashing
+- Input validation
+- Rate limiting
+- Secure API routes
+- Protected dashboard
+
+---
+
+Folder Structure
+
+Generate a professional folder structure separating:
+
+- frontend
+- backend
+- shared components
+- services
+- utilities
+- hooks
+- database
+- API routes
+
+---
+
+Final Deliverables
+
+Provide:
+
+1. Complete frontend code
+2. Complete backend code
+3. Database schema
+4. SQL scripts
+5. Environment variable template (.env.example)
+6. Installation guide
+7. Deployment guide
+8. README.md
+9. Seed data
+10. Sample interview questions
+11. Sample resumes
+
+The application must run locally with "npm install" and "npm run dev" and be deployable using only free services.

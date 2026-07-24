@@ -3,20 +3,38 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: InterviewAce AI - Career preparation platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User profile
+  - name: dashboard
+    description: Dashboard statistics and activity
+  - name: resumes
+    description: Resume management and analysis
+  - name: interviews
+    description: Mock interview sessions
+  - name: questions
+    description: Interview questions bank
+  - name: coding
+    description: Coding challenges and submissions
+  - name: learning
+    description: Learning roadmap and topics
+  - name: ai
+    description: AI-powered evaluations
+  - name: admin
+    description: Admin panel
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +42,878 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── Users ────────────────────────────────────────────────────────────────
+  /users/me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+    patch:
+      operationId: updateMe
+      tags: [users]
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileUpdate"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  # ─── Dashboard ────────────────────────────────────────────────────────────
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics overview
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent user activity feed
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  # ─── Resumes ──────────────────────────────────────────────────────────────
+  /resumes:
+    get:
+      operationId: listResumes
+      tags: [resumes]
+      summary: List user resumes
+      responses:
+        "200":
+          description: List of resumes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Resume"
+    post:
+      operationId: createResume
+      tags: [resumes]
+      summary: Create a new resume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeInput"
+      responses:
+        "201":
+          description: Created resume
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resume"
+
+  /resumes/{id}:
+    get:
+      operationId: getResume
+      tags: [resumes]
+      summary: Get a resume by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resume
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resume"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateResume
+      tags: [resumes]
+      summary: Update a resume
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeUpdate"
+      responses:
+        "200":
+          description: Updated resume
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resume"
+    delete:
+      operationId: deleteResume
+      tags: [resumes]
+      summary: Delete a resume
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /resumes/{id}/analyze:
+    post:
+      operationId: analyzeResume
+      tags: [resumes]
+      summary: Run AI ATS analysis on a resume
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeAnalysis"
+
+  # ─── Interviews ───────────────────────────────────────────────────────────
+  /interviews:
+    get:
+      operationId: listInterviews
+      tags: [interviews]
+      summary: List user interview sessions
+      responses:
+        "200":
+          description: Interview sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InterviewSession"
+    post:
+      operationId: createInterview
+      tags: [interviews]
+      summary: Start a new mock interview session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterviewInput"
+      responses:
+        "201":
+          description: Created interview session with first question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSession"
+
+  /interviews/{id}:
+    get:
+      operationId: getInterview
+      tags: [interviews]
+      summary: Get interview session details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Interview session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSession"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteInterview
+      tags: [interviews]
+      summary: Delete an interview session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /interviews/{id}/answers:
+    post:
+      operationId: submitAnswer
+      tags: [interviews]
+      summary: Submit an answer and get AI evaluation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerInput"
+      responses:
+        "201":
+          description: Answer evaluation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerEvaluation"
+
+  # ─── Questions ────────────────────────────────────────────────────────────
+  /questions:
+    get:
+      operationId: listQuestions
+      tags: [questions]
+      summary: List interview questions with optional filters
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Questions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Question"
+
+  # ─── Coding ───────────────────────────────────────────────────────────────
+  /coding-problems:
+    get:
+      operationId: listCodingProblems
+      tags: [coding]
+      summary: List coding problems
+      parameters:
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+        - name: language
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Coding problems
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CodingProblem"
+
+  /coding-problems/{id}:
+    get:
+      operationId: getCodingProblem
+      tags: [coding]
+      summary: Get a coding problem with test cases
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Coding problem
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodingProblem"
+        "404":
+          description: Not found
+
+  /coding-submissions:
+    get:
+      operationId: listCodingSubmissions
+      tags: [coding]
+      summary: List user coding submissions
+      responses:
+        "200":
+          description: Submissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CodingSubmission"
+    post:
+      operationId: submitCode
+      tags: [coding]
+      summary: Submit code for evaluation and AI review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CodeSubmissionInput"
+      responses:
+        "201":
+          description: Submission result with AI review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodingSubmission"
+
+  # ─── Learning ─────────────────────────────────────────────────────────────
+  /learning/roadmap:
+    get:
+      operationId: getLearningRoadmap
+      tags: [learning]
+      summary: Get personalized learning roadmap based on weak areas
+      responses:
+        "200":
+          description: Personalized roadmap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LearningRoadmap"
+
+  /learning/topics:
+    get:
+      operationId: listLearningTopics
+      tags: [learning]
+      summary: List topics with strength indicators
+      responses:
+        "200":
+          description: Topics list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LearningTopic"
+
+  # ─── Admin ────────────────────────────────────────────────────────────────
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: Admin — list all users
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+
+  /admin/users/{id}:
+    delete:
+      operationId: adminDeleteUser
+      tags: [admin]
+      summary: Admin — delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/analytics:
+    get:
+      operationId: getAdminAnalytics
+      tags: [admin]
+      summary: Admin — platform analytics overview
+      responses:
+        "200":
+          description: Analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnalytics"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    # ─── User ──────────────────────────────────────────────────────────────
+    UserProfile:
+      type: object
+      required: [id, clerkId, email, name, role, createdAt]
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+        targetRole:
+          type: ["string", "null"]
+        experienceLevel:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        targetRole:
+          type: string
+        experienceLevel:
+          type: string
+
+    # ─── Dashboard ─────────────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      required: [resumeScore, interviewCount, avgTechnicalScore, avgCommunicationScore, avgCodingScore, weakTopics, totalSubmissions]
+      properties:
+        resumeScore:
+          type: ["integer", "null"]
+        interviewCount:
+          type: integer
+        avgTechnicalScore:
+          type: ["number", "null"]
+        avgCommunicationScore:
+          type: ["number", "null"]
+        avgCodingScore:
+          type: ["number", "null"]
+        weakTopics:
+          type: array
+          items:
+            type: string
+        totalSubmissions:
+          type: integer
+
+    ActivityItem:
+      type: object
+      required: [id, type, title, description, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        score:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    # ─── Resume ────────────────────────────────────────────────────────────
+    Resume:
+      type: object
+      required: [id, userId, title, template, content, atsScore, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        title:
+          type: string
+        template:
+          type: string
+        content:
+          description: JSON blob with resume sections
+          type: object
+          additionalProperties: true
+        atsScore:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ResumeInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        template:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+
+    ResumeUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        template:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        atsScore:
+          type: integer
+
+    ResumeAnalysis:
+      type: object
+      required: [score, atsCompatibility, missingKeywords, grammarSuggestions, recommendations]
+      properties:
+        score:
+          type: integer
+        atsCompatibility:
+          type: integer
+        missingKeywords:
+          type: array
+          items:
+            type: string
+        grammarSuggestions:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        strengths:
+          type: array
+          items:
+            type: string
+
+    # ─── Interview ─────────────────────────────────────────────────────────
+    InterviewSession:
+      type: object
+      required: [id, userId, category, difficulty, status, technicalScore, communicationScore, confidenceScore, questionsAsked, answersGiven, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        category:
+          type: string
+        difficulty:
+          type: string
+        status:
+          type: string
+        technicalScore:
+          type: ["number", "null"]
+        communicationScore:
+          type: ["number", "null"]
+        confidenceScore:
+          type: ["number", "null"]
+        questionsAsked:
+          type: integer
+        answersGiven:
+          type: integer
+        createdAt:
+          type: string
+
+    InterviewInput:
+      type: object
+      required: [category, difficulty]
+      properties:
+        category:
+          type: string
+          enum: [java, python, mern, fullstack, data_analyst, data_science, ai_ml, hr]
+        difficulty:
+          type: string
+          enum: [beginner, intermediate, advanced]
+
+    AnswerInput:
+      type: object
+      required: [questionId, answer]
+      properties:
+        questionId:
+          type: integer
+        answer:
+          type: string
+
+    AnswerEvaluation:
+      type: object
+      required: [id, interviewId, questionId, answer, technicalScore, communicationScore, confidenceScore, correctAnswer, feedback]
+      properties:
+        id:
+          type: integer
+        interviewId:
+          type: integer
+        questionId:
+          type: integer
+        answer:
+          type: string
+        technicalScore:
+          type: integer
+        communicationScore:
+          type: integer
+        confidenceScore:
+          type: integer
+        correctAnswer:
+          type: string
+        feedback:
+          type: string
+        improvements:
+          type: array
+          items:
+            type: string
+
+    # ─── Questions ─────────────────────────────────────────────────────────
+    Question:
+      type: object
+      required: [id, category, difficulty, text, type]
+      properties:
+        id:
+          type: integer
+        category:
+          type: string
+        difficulty:
+          type: string
+        text:
+          type: string
+        type:
+          type: string
+        sampleAnswer:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+
+    # ─── Coding ────────────────────────────────────────────────────────────
+    CodingProblem:
+      type: object
+      required: [id, title, description, difficulty, languages, starterCode, examples]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        difficulty:
+          type: string
+        languages:
+          type: array
+          items:
+            type: string
+        starterCode:
+          type: object
+          additionalProperties: true
+        examples:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        constraints:
+          type: ["string", "null"]
+        timeLimit:
+          type: integer
+
+    CodeSubmissionInput:
+      type: object
+      required: [problemId, language, code]
+      properties:
+        problemId:
+          type: integer
+        language:
+          type: string
+        code:
+          type: string
+
+    CodingSubmission:
+      type: object
+      required: [id, userId, problemId, language, code, score, passed, aiReview, complexity, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        problemId:
+          type: integer
+        language:
+          type: string
+        code:
+          type: string
+        score:
+          type: integer
+        passed:
+          type: boolean
+        testsPassed:
+          type: integer
+        testsTotal:
+          type: integer
+        aiReview:
+          type: string
+        complexity:
+          type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+
+    # ─── Learning ──────────────────────────────────────────────────────────
+    LearningRoadmap:
+      type: object
+      required: [weakTopics, strongTopics, plan, recommendedVideos]
+      properties:
+        weakTopics:
+          type: array
+          items:
+            type: string
+        strongTopics:
+          type: array
+          items:
+            type: string
+        plan:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoadmapStep"
+        recommendedVideos:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoResource"
+
+    RoadmapStep:
+      type: object
+      required: [week, topic, goal, resources]
+      properties:
+        week:
+          type: integer
+        topic:
+          type: string
+        goal:
+          type: string
+        resources:
+          type: array
+          items:
+            type: string
+
+    VideoResource:
+      type: object
+      required: [title, url, topic, duration]
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+        topic:
+          type: string
+        duration:
+          type: string
+
+    LearningTopic:
+      type: object
+      required: [topic, strength, questionsAttempted, avgScore]
+      properties:
+        topic:
+          type: string
+        strength:
+          type: string
+        questionsAttempted:
+          type: integer
+        avgScore:
+          type: number
+
+    # ─── Admin ─────────────────────────────────────────────────────────────
+    AdminUser:
+      type: object
+      required: [id, clerkId, email, name, role, interviewCount, resumeCount, createdAt]
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        interviewCount:
+          type: integer
+        resumeCount:
+          type: integer
+        createdAt:
+          type: string
+
+    AdminAnalytics:
+      type: object
+      required: [totalUsers, totalInterviews, totalResumes, totalSubmissions, avgInterviewScore, userGrowth]
+      properties:
+        totalUsers:
+          type: integer
+        totalInterviews:
+          type: integer
+        totalResumes:
+          type: integer
+        totalSubmissions:
+          type: integer
+        avgInterviewScore:
+          type: number
+        userGrowth:
+          type: array
+          items:
+            type: object
+            additionalProperties: true

@@ -7,7 +7,6 @@ import {
   GetResumeParams, GetResumeResponse, UpdateResumeParams, UpdateResumeBody,
   UpdateResumeResponse, DeleteResumeParams, AnalyzeResumeParams, AnalyzeResumeResponse,
 } from "@workspace/api-zod";
-import { geminiPrompt, parseGeminiJson } from "../lib/gemini";
 
 const router: IRouter = Router();
 
@@ -76,31 +75,39 @@ router.post("/resumes/:id/analyze", requireAuth, resolveDbUser, async (req, res)
     .where(and(eq(resumesTable.id, params.data.id), eq(resumesTable.userId, userId)));
   if (!resume) { res.status(404).json({ error: "Resume not found" }); return; }
 
-  const contentStr = JSON.stringify(resume.content);
-  const prompt = `You are an expert ATS resume analyzer. Analyze this resume JSON and provide feedback.
-Resume: ${contentStr}
-Return ONLY valid JSON (no markdown) in this exact format:
-{
-  "score": <0-100 integer>,
-  "atsCompatibility": <0-100 integer>,
-  "missingKeywords": ["keyword1", "keyword2"],
-  "grammarSuggestions": ["suggestion1"],
-  "recommendations": ["recommendation1", "recommendation2"],
-  "strengths": ["strength1"]
-}`;
-
-  const aiText = await geminiPrompt(prompt);
-  const aiResult = aiText ? parseGeminiJson<{
-    score: number; atsCompatibility: number; missingKeywords: string[];
-    grammarSuggestions: string[]; recommendations: string[]; strengths: string[];
-  }>(aiText) : null;
-
-  const analysis = aiResult ?? {
-    score: 65, atsCompatibility: 70,
-    missingKeywords: ["quantified achievements", "action verbs", "industry keywords"],
-    grammarSuggestions: ["Use active voice throughout", "Keep bullet points concise"],
-    recommendations: ["Add measurable metrics", "Tailor keywords to job description", "Add certifications section"],
-    strengths: ["Clear structure", "Good contact information"],
+  const content = (resume.content || {}) as Record<string, any>;
+  const summaryWords = String(content.summary || "").trim().split(/\s+/).filter(Boolean);
+  const experience = Array.isArray(content.experience) ? content.experience : [];
+  const education = Array.isArray(content.education) ? content.education : [];
+  const skills = Array.isArray(content.skills) ? content.skills.filter(Boolean) : [];
+  const bulletCount = experience.reduce((total: number, item: any) =>
+    total + String(item?.description || "").split(/\n|[•]/).map((line: string) => line.trim()).filter(Boolean).length, 0);
+  const searchableText = JSON.stringify(content).toLowerCase();
+  const hasPlaceholder = /sdffghjk|lorem ipsum|your name|example\.com|test test/.test(searchableText);
+  const hasEmptyFields = !content.personalDetails?.name ||
+    experience.some((item: any) => !item?.jobTitle && !item?.title) ||
+    education.some((item: any) => !item?.degree && !item?.title);
+  let score = 0;
+  const strengths: string[] = [];
+  const recommendations: string[] = [];
+  if (summaryWords.length > 20) { score += 20; strengths.push("Professional summary has strong detail."); }
+  else recommendations.push("Expand your summary to more than 20 words.");
+  if (bulletCount >= 2) { score += 20; strengths.push("Experience includes multiple achievement bullets."); }
+  else recommendations.push("Add at least two experience bullet points.");
+  if (skills.length >= 5) { score += 20; strengths.push("Skills section has a useful range of keywords."); }
+  else recommendations.push("Add at least five relevant skills.");
+  if (!hasPlaceholder && !hasEmptyFields) { score += 20; strengths.push("Resume fields are complete and free of placeholder text."); }
+  else recommendations.push("Complete empty fields and replace placeholder text.");
+  if (education.some((item: any) => item?.degree || item?.title || item?.institution || item?.school)) {
+    score += 20; strengths.push("Education details are included.");
+  } else recommendations.push("Add your education details.");
+  const analysis = {
+    score,
+    atsCompatibility: score,
+    missingKeywords: [],
+    grammarSuggestions: [],
+    recommendations,
+    strengths,
   };
 
   // Save ATS score back

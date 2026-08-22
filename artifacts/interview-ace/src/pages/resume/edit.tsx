@@ -1,6 +1,6 @@
 // src/pages/resume/edit.tsx
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useGetResume, getGetResumeQueryKey, useUpdateResume, useAnalyzeResume } from "@workspace/api-client-react";
+import { useGetResume, getGetResumeQueryKey, useUpdateResume } from "@workspace/api-client-react";
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { Loader2, Download, Sparkles, ChevronLeft, Plus, Trash2 } from "lucide-react";
@@ -15,7 +15,6 @@ export default function ResumeEdit() {
   const resumeId = parseInt(id || "0", 10);
   const { data: resume, isLoading } = useGetResume(resumeId, { query: { enabled: !!resumeId, queryKey: getGetResumeQueryKey(resumeId) } });
   const updateResume = useUpdateResume();
-  const analyzeResume = useAnalyzeResume();
   const { toast } = useToast();
 
   const [title, setTitle] = useState("");
@@ -24,8 +23,14 @@ export default function ResumeEdit() {
     summary: "",
     experience: [],
     education: [],
-    skills: []
+    skills: [],
+    projects: [],
   });
+  const [analysis, setAnalysis] = useState<{
+    score: number;
+    strengths: string[];
+    suggestions: string[];
+  } | null>(null);
 
   const initializedForId = useRef<number | null>(null);
   const lastSaved = useRef<any>(null);
@@ -51,15 +56,33 @@ export default function ResumeEdit() {
   };
 
   const handleAnalyze = () => {
-    analyzeResume.mutate({ id: resumeId }, {
-      onSuccess: (res) => {
-        toast({ 
-          title: "Analysis Complete", 
-          description: `ATS Score: ${res.score}%. Check suggestions.` 
-        });
-        // Might want to display res.recommendations somewhere
-      }
-    });
+    const summaryWords = String(content?.summary || "").trim().split(/\s+/).filter(Boolean);
+    const experience = Array.isArray(content?.experience) ? content.experience : [];
+    const education = Array.isArray(content?.education) ? content.education : [];
+    const skills = Array.isArray(content?.skills) ? content.skills.filter(Boolean) : [];
+    const bulletCount = experience.reduce((total: number, item: any) => {
+      const bullets = String(item?.description || "").split(/\n|[•]/).map((line) => line.trim()).filter(Boolean);
+      return total + bullets.length;
+    }, 0);
+    const searchableText = JSON.stringify(content).toLowerCase();
+    const hasPlaceholder = /sdffghjk|lorem ipsum|your name|example\.com|test test/.test(searchableText);
+    const hasEmptyFields = !content?.personalDetails?.name || experience.some((item: any) => !item?.jobTitle && !item?.title) || education.some((item: any) => !item?.degree && !item?.title);
+    let score = 0;
+    const strengths: string[] = [];
+    const suggestions: string[] = [];
+    if (summaryWords.length > 20) { score += 20; strengths.push("Professional summary has strong detail."); }
+    else suggestions.push("Expand your summary to more than 20 words.");
+    if (bulletCount >= 2) { score += 20; strengths.push("Experience includes multiple achievement bullets."); }
+    else suggestions.push("Add at least two experience bullet points.");
+    if (skills.length >= 5) { score += 20; strengths.push("Skills section has a useful range of keywords."); }
+    else suggestions.push("Add at least five relevant skills.");
+    if (!hasPlaceholder && !hasEmptyFields) { score += 20; strengths.push("Resume fields are complete and free of placeholder text."); }
+    else suggestions.push("Complete empty fields and replace placeholder text.");
+    if (education.length > 0 && education.some((item: any) => item?.degree || item?.title || item?.institution || item?.school)) { score += 20; strengths.push("Education details are included."); }
+    else suggestions.push("Add your education details.");
+    setAnalysis({ score, strengths, suggestions });
+    setContent((previous: any) => ({ ...previous, atsScore: score }));
+    toast({ title: "Free ATS analysis complete", description: `Your resume scored ${score}/100.` });
   };
 
   const updateSectionItem = (
@@ -91,6 +114,29 @@ export default function ResumeEdit() {
     setContent((previous: any) => ({
       ...previous,
       [section]: (previous[section] || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+    }));
+  };
+
+  const updateProject = (index: number, field: string, value: string) => {
+    setContent((previous: any) => ({
+      ...previous,
+      projects: (previous.projects || []).map((item: any, itemIndex: number) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
+    }));
+  };
+
+  const addProject = () => {
+    setContent((previous: any) => ({
+      ...previous,
+      projects: [...(previous.projects || []), { name: "", description: "", technologies: "", url: "" }],
+    }));
+  };
+
+  const removeProject = (index: number) => {
+    setContent((previous: any) => ({
+      ...previous,
+      projects: (previous.projects || []).filter((_: any, itemIndex: number) => itemIndex !== index),
     }));
   };
 
@@ -131,8 +177,8 @@ export default function ResumeEdit() {
               <span className={resume.atsScore > 80 ? "text-emerald-400" : "text-amber-400"}>{resume.atsScore}%</span>
             </div>
           )}
-          <Button onClick={handleAnalyze} disabled={analyzeResume.isPending} variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
-            {analyzeResume.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+          <Button onClick={handleAnalyze} variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+            <Sparkles className="w-4 h-4 mr-2" />
             Analyze
           </Button>
           <Button onClick={handleSave} disabled={updateResume.isPending} className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -260,6 +306,40 @@ export default function ResumeEdit() {
             <p className="text-xs text-gray-500">Separate skills with commas.</p>
           </section>
 
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white">Projects</h2>
+              <Button type="button" size="sm" variant="outline" onClick={addProject} className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+                <Plus className="w-4 h-4 mr-1" /> Add project
+              </Button>
+            </div>
+            {(content?.projects || []).map((item: any, index: number) => (
+              <div key={index} className="relative space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <button type="button" onClick={() => removeProject(index)} aria-label="Remove project" className="absolute right-3 top-3 text-gray-500 hover:text-red-400">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <div className="grid grid-cols-2 gap-3 pr-6">
+                  <Input placeholder="Project name" value={item.name || item.title || ""} onChange={(e) => updateProject(index, "name", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Technologies used" value={Array.isArray(item.technologies) ? item.technologies.join(", ") : item.technologies || ""} onChange={(e) => updateProject(index, "technologies", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                </div>
+                <Input placeholder="Project URL (optional)" value={item.url || ""} onChange={(e) => updateProject(index, "url", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                <Textarea placeholder="Describe what you built and the impact..." value={item.description || ""} onChange={(e) => updateProject(index, "description", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white min-h-[90px]" />
+              </div>
+            ))}
+            {(!content?.projects || content.projects.length === 0) && <p className="text-sm text-gray-500">Add projects that demonstrate your skills and impact.</p>}
+          </section>
+
+          {analysis && (
+            <section className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Free ATS Analysis</h2>
+                <span className="text-2xl font-bold text-blue-400">{analysis.score}/100</span>
+              </div>
+              {analysis.strengths.map((item) => <p key={item} className="text-sm text-emerald-300">✓ {item}</p>)}
+              {analysis.suggestions.map((item) => <p key={item} className="text-sm text-amber-300">• {item}</p>)}
+            </section>
+          )}
+
         </div>
 
         {/* Live Preview Panel */}
@@ -327,7 +407,25 @@ export default function ResumeEdit() {
               </div>
             )}
 
-            {!content?.summary && !content?.personalDetails?.name && !(content?.experience || []).length && !(content?.education || []).length && !(content?.skills || []).length && (
+            {(content?.projects || []).length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-lg font-bold border-b border-gray-300 pb-1 mb-3 uppercase tracking-wide">Projects</h2>
+                <div className="space-y-3">
+                  {content.projects.map((item: any, index: number) => (
+                    <div key={index}>
+                      <div className="flex justify-between gap-4">
+                        <h3 className="font-bold">{item.name || item.title || "Project"}</h3>
+                        {item.url && <span className="text-sm text-blue-700">{item.url}</span>}
+                      </div>
+                      {item.technologies && <p className="text-sm text-gray-700">{Array.isArray(item.technologies) ? item.technologies.join(", ") : item.technologies}</p>}
+                      {item.description && <p className="text-sm leading-relaxed text-gray-800 mt-1 whitespace-pre-line">{item.description}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!content?.summary && !content?.personalDetails?.name && !(content?.experience || []).length && !(content?.education || []).length && !(content?.skills || []).length && !(content?.projects || []).length && (
               <div className="h-full flex items-center justify-center text-gray-300">
                 Start typing on the left to see live preview
               </div>

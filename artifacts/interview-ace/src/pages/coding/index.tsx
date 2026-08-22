@@ -45,33 +45,32 @@ export default function CodingHub() {
               </thead>
               <tbody className="divide-y divide-white/5 text-sm">
                 {problems?.map(problem => (
-                  <tr key={problem.id} className="hover:bg-white/5 transition-colors group">
-                    <td className="px-6 py-4">
-                      {/* Assuming unattempted for now since backend doesn't return user status per problem in list */}
-                      <div className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center"></div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Link href={`/coding/${problem.id}`}>
-                        <span className="font-medium text-white hover:text-blue-400 transition-colors cursor-pointer block">
+                  <Link key={problem.id} href={`/coding/${problem.id}`} asChild>
+                    <tr className="hover:bg-white/5 transition-colors group cursor-pointer">
+                      <td className="px-6 py-4">
+                        <div className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center"></div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-medium text-white group-hover:text-blue-400 transition-colors">
                           {problem.title}
                         </span>
-                      </Link>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-medium border capitalize ${difficultyColors[problem.difficulty as keyof typeof difficultyColors] || 'bg-gray-500/10 text-gray-300'}`}>
-                        {problem.difficulty}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 hidden md:table-cell">
-                      <div className="flex gap-2">
-                        {problem.languages.map(lang => (
-                          <span key={lang} className="text-xs text-gray-400 bg-white/5 px-2 py-0.5 rounded">
-                            {lang}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-medium border capitalize ${difficultyColors[problem.difficulty as keyof typeof difficultyColors] || 'bg-gray-500/10 text-gray-300'}`}>
+                          {problem.difficulty}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 hidden md:table-cell">
+                        <div className="flex gap-2">
+                          {problem.languages.map(lang => (
+                            <span key={lang} className="text-xs text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+                              {lang}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  </Link>
                 ))}
                 {!problems?.length && (
                   <tr>

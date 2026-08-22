@@ -1,11 +1,18 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { ClerkProvider, SignUp, Show, useClerk, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { dark } from '@clerk/themes';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
+
+// Module-level ref so the getter is registered before any component renders.
+// This avoids the race condition where queries fire during render but
+// setAuthTokenGetter() would only be called in a useEffect (after paint).
+const _authRef = { current: null as (() => Promise<string | null>) | null };
+setAuthTokenGetter(() => _authRef.current?.() ?? null);
 
 import HomePage from "./pages/home";
 import DashboardPage from "./pages/dashboard";
@@ -70,25 +77,13 @@ const clerkAppearance = {
   },
 };
 
-function SignInPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center relative overflow-hidden bg-background px-4">
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-10"></div>
-      <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent"></div>
-      <div className="relative z-10">
-        <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
-      </div>
-    </div>
-  );
-}
-
 function SignUpPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center relative overflow-hidden bg-background px-4">
       <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-10"></div>
       <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent"></div>
       <div className="relative z-10">
-        <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+        <SignUp routing="path" path={`${basePath}/sign-up`} />
       </div>
     </div>
   );
@@ -105,6 +100,38 @@ function HomeRedirect() {
       </Show>
     </>
   );
+}
+
+/** Keeps the module-level auth ref in sync with the current Clerk session.
+ *  Runs synchronously during render so the ref is populated before any
+ *  sibling component's useQuery fires its first fetch. */
+function ClerkAuthBridge() {
+  const { getToken, isSignedIn, isLoaded } = useAuth();
+  // Synchronous assignment during render — intentional (no re-render side-effect).
+  _authRef.current = getToken;
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    // Debug: check what token Clerk returns
+    getToken().then(token => {
+      console.log("[ClerkAuthBridge] isSignedIn:", isSignedIn, "token:", token ? token.substring(0, 30) + "..." : null);
+      // Hit the debug endpoint with the token to see if it verifies
+      if (token) {
+        fetch("/api/debug-auth", { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(d => console.log("[debug-auth with token]", d))
+          .catch(console.error);
+      } else {
+        fetch("/api/debug-auth")
+          .then(r => r.json())
+          .then(d => console.log("[debug-auth no token]", d))
+          .catch(console.error);
+      }
+    });
+    return () => { _authRef.current = null; };
+  }, [isLoaded, isSignedIn]);
+
+  return null;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -137,17 +164,16 @@ function ClerkProviderWithRoutes() {
       publishableKey={clerkPubKey}
       proxyUrl={clerkProxyUrl}
       appearance={clerkAppearance}
-      signInUrl={`${basePath}/sign-in`}
       signUpUrl={`${basePath}/sign-up`}
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
+          <ClerkAuthBridge />
           <ClerkQueryClientCacheInvalidator />
           <Switch>
             <Route path="/" component={HomeRedirect} />
-            <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             
             {/* Protected Routes */}

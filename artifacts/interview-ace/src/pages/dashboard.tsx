@@ -1,11 +1,12 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useGetDashboardStats, useGetDashboardActivity } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
+import { Link } from "wouter";
 import { Loader2, TrendingUp, Target, Code2, MessageSquare, Briefcase } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from "recharts";
 
 export default function DashboardPage() {
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useGetDashboardStats();
   const { data: activity, isLoading: activityLoading } = useGetDashboardActivity();
 
   if (statsLoading || activityLoading) {
@@ -13,6 +14,17 @@ export default function DashboardPage() {
       <AppLayout>
         <div className="flex items-center justify-center h-full">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (statsError) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center h-full text-center">
+          <p className="text-gray-400 mb-2">Could not load dashboard data.</p>
+          <p className="text-xs text-gray-600">Check your connection and try refreshing.</p>
         </div>
       </AppLayout>
     );
@@ -46,10 +58,10 @@ export default function DashboardPage() {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Resume Score" value={`${stats?.resumeScore || 0}%`} icon={Briefcase} color="text-blue-400" />
-          <StatCard title="Interviews Taken" value={stats?.interviewCount || 0} icon={MessageSquare} color="text-violet-400" />
-          <StatCard title="Coding Problems" value={stats?.totalSubmissions || 0} icon={Code2} color="text-pink-400" />
-          <StatCard title="Avg Tech Score" value={`${Math.round(stats?.avgTechnicalScore || 0)}%`} icon={Target} color="text-emerald-400" />
+          <Link href="/resume"><StatCard title="Resume Score" value={`${stats?.resumeScore || 0}%`} icon={Briefcase} color="text-blue-400" /></Link>
+          <Link href="/interview"><StatCard title="Interviews Taken" value={stats?.interviewCount || 0} icon={MessageSquare} color="text-violet-400" /></Link>
+          <Link href="/coding"><StatCard title="Coding Problems" value={stats?.totalSubmissions || 0} icon={Code2} color="text-pink-400" /></Link>
+          <Link href="/learning"><StatCard title="Avg Tech Score" value={`${Math.round(stats?.avgTechnicalScore || 0)}%`} icon={Target} color="text-emerald-400" /></Link>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -141,13 +153,14 @@ function StatCard({ title, value, icon: Icon, color }: { title: string, value: s
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="glass rounded-2xl p-6 flex items-center justify-between group"
+      whileHover={{ scale: 1.03, y: -2 }}
+      className="glass rounded-2xl p-6 flex items-center justify-between group cursor-pointer hover:bg-white/10 transition-colors"
     >
       <div>
         <p className="text-sm font-medium text-gray-400 mb-1">{title}</p>
         <p className="text-3xl font-bold text-white">{value}</p>
       </div>
-      <div className={`w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center ${color}`}>
+      <div className={`w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center ${color} group-hover:scale-110 transition-transform`}>
         <Icon className="w-6 h-6" />
       </div>
     </motion.div>

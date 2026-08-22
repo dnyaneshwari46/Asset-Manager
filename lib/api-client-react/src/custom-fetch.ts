@@ -360,7 +360,9 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Include credentials so session cookies (e.g. Clerk __session) are forwarded
+  // for same-origin and proxied requests in both dev and production.
+  const response = await fetch(input, { credentials: "include", ...init, method, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

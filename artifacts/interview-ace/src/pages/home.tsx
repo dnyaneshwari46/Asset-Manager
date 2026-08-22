@@ -26,9 +26,6 @@ export default function HomePage() {
           <span className="text-xl font-bold tracking-tight text-white">Interview<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-400">Ace</span></span>
         </div>
         <div className="flex gap-4 items-center">
-          <Link href="/sign-in">
-            <span className="text-sm font-medium text-gray-300 hover:text-white transition-colors cursor-pointer">Log in</span>
-          </Link>
           <Link href="/sign-up">
             <span className="text-sm font-medium bg-white text-black px-4 py-2 rounded-full hover:bg-gray-200 transition-colors cursor-pointer shadow-lg shadow-white/10">
               Get Started

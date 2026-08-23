@@ -10,6 +10,21 @@ import {
 
 const router: IRouter = Router();
 
+function parseSaveResumeReportBody(body: unknown) {
+  if (!body || typeof body !== "object") return null;
+  const value = body as Record<string, unknown>;
+  const resumeName = typeof value.resumeName === "string" ? value.resumeName.trim() : "";
+  const extractedText = typeof value.extractedText === "string" ? value.extractedText : "";
+  const atsScore = value.atsScore;
+  const issues = value.issues;
+  const savedAt = value.savedAt;
+  if (!resumeName || resumeName.length > 200 || extractedText.length > 500_000) return null;
+  if (typeof atsScore !== "number" || !Number.isInteger(atsScore) || atsScore < 0 || atsScore > 100) return null;
+  if (!Array.isArray(issues) || issues.length > 100 || issues.some((issue) => typeof issue !== "string" || issue.length > 500)) return null;
+  if (savedAt !== undefined && (typeof savedAt !== "string" || Number.isNaN(Date.parse(savedAt)))) return null;
+  return { resumeName, extractedText, atsScore, issues: issues as string[], savedAt: savedAt as string | undefined };
+}
+
 function serializeResume(r: typeof resumesTable.$inferSelect) {
   return {
     id: r.id, userId: r.userId, title: r.title, template: r.template,
@@ -33,6 +48,40 @@ router.post("/resumes", requireAuth, resolveDbUser, async (req, res): Promise<vo
   const [resume] = await db.insert(resumesTable).values({ ...parsed.data, userId }).returning();
   await db.insert(activityLogTable).values({ userId, type: "resume", title: "Resume Created", description: `Created "${resume.title}"` });
   res.status(201).json(CreateResumeResponse.parse(serializeResume(resume)));
+});
+
+router.post("/resume/save", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
+  const parsed = parseSaveResumeReportBody(req.body);
+  if (!parsed) {
+    res.status(400).json({ error: "Invalid ATS report payload" });
+    return;
+  }
+
+  const userId = req.dbUser!.id;
+  const report = {
+    type: "ats-report",
+    fileName: parsed.resumeName,
+    extractedText: parsed.extractedText,
+    issues: parsed.issues,
+    savedAt: parsed.savedAt ?? new Date().toISOString(),
+  };
+  const [resume] = await db.insert(resumesTable).values({
+    userId,
+    title: parsed.resumeName,
+    template: "classic",
+    content: report,
+    atsScore: parsed.atsScore,
+  }).returning();
+
+  await db.insert(activityLogTable).values({
+    userId,
+    type: "resume",
+    title: "ATS Report Saved",
+    description: `${parsed.resumeName} scored ${parsed.atsScore}/100`,
+    score: parsed.atsScore,
+  });
+
+  res.status(201).json(serializeResume(resume));
 });
 
 router.get("/resumes/:id", requireAuth, resolveDbUser, async (req, res): Promise<void> => {

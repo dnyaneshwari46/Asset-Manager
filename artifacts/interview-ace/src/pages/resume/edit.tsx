@@ -3,7 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useGetResume, getGetResumeQueryKey, useUpdateResume } from "@workspace/api-client-react";
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Download, Sparkles, ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { Loader2, Download, Sparkles, ChevronLeft, Plus, Trash2, Save as SaveIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,7 @@ export default function ResumeEdit() {
     strengths: string[];
     suggestions: string[];
   } | null>(null);
+  const [newSkill, setNewSkill] = useState("");
 
   const initializedForId = useRef<number | null>(null);
   const lastSaved = useRef<any>(null);
@@ -47,7 +48,7 @@ export default function ResumeEdit() {
 
   // Debounced auto-save could go here, but for explicit control we use a Save button for now
   const handleSave = () => {
-    updateResume.mutate({ id: resumeId, data: { title, content } }, {
+    updateResume.mutate({ id: resumeId, data: { title, content, atsScore: typeof content?.atsScore === "number" ? content.atsScore : undefined } }, {
       onSuccess: () => {
         lastSaved.current = { title, content };
         toast({ title: "Saved successfully" });
@@ -144,6 +145,23 @@ export default function ResumeEdit() {
     ? content.skills.map((skill: any) => (typeof skill === "string" ? skill : skill.name || "")).join(", ")
     : "";
 
+  const addSkill = () => {
+    const skill = newSkill.trim();
+    if (!skill) return;
+    setContent((previous: any) => ({
+      ...previous,
+      skills: [...(Array.isArray(previous.skills) ? previous.skills : []), skill],
+    }));
+    setNewSkill("");
+  };
+
+  const removeSkill = (index: number) => {
+    setContent((previous: any) => ({
+      ...previous,
+      skills: (previous.skills || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+    }));
+  };
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -157,8 +175,8 @@ export default function ResumeEdit() {
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Top Nav for Editor */}
-      <header className="h-16 glass-panel border-b border-white/10 flex items-center justify-between px-6 shrink-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="h-16 glass-panel border-b border-white/10 flex items-center justify-between gap-2 px-3 sm:px-6 shrink-0 z-10">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
           <Link href="/resume">
             <button className="text-gray-400 hover:text-white transition-colors">
               <ChevronLeft className="w-5 h-5" />
@@ -167,34 +185,36 @@ export default function ResumeEdit() {
           <Input 
             value={title} 
             onChange={(e) => setTitle(e.target.value)}
-            className="bg-transparent border-transparent hover:border-white/10 focus:border-blue-500 text-lg font-bold text-white px-2 h-10 w-[300px]"
+            placeholder="Untitled resume"
+            className="min-w-0 bg-transparent border-transparent hover:border-white/10 focus:border-blue-500 text-sm sm:text-lg font-bold text-white px-2 h-10 w-full max-w-[180px] sm:max-w-[300px]"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-3">
           {resume?.atsScore !== null && resume?.atsScore !== undefined && (
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm font-medium">
               <span className="text-gray-400">ATS Score:</span>
               <span className={resume.atsScore > 80 ? "text-emerald-400" : "text-amber-400"}>{resume.atsScore}%</span>
             </div>
           )}
-          <Button onClick={handleAnalyze} variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+          <Button onClick={handleAnalyze} variant="outline" aria-label="Analyze resume" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 px-2 sm:px-4">
             <Sparkles className="w-4 h-4 mr-2" />
-            Analyze
+            <span className="hidden sm:inline">Analyze</span>
           </Button>
-          <Button onClick={handleSave} disabled={updateResume.isPending} className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Button onClick={handleSave} disabled={updateResume.isPending} aria-label="Save resume" className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-4">
             {updateResume.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save
+            {!updateResume.isPending && <SaveIcon className="w-4 h-4 sm:mr-2" />}
+            <span className="hidden sm:inline">Save</span>
           </Button>
-          <Button className="bg-white text-black hover:bg-gray-200">
-            <Download className="w-4 h-4 mr-2" />
-            PDF
+          <Button aria-label="Download resume as PDF" className="bg-white text-black hover:bg-gray-200 px-2 sm:px-4">
+            <Download className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">PDF</span>
           </Button>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative z-0 flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden lg:flex-row">
         {/* Editor Sidebar */}
-        <div className="w-1/2 max-w-xl border-r border-white/10 bg-[#0a0a1a] overflow-y-auto p-6 space-y-8 custom-scrollbar">
+        <div className="relative z-20 flex min-h-0 w-full min-w-0 flex-1 basis-1/2 flex-col border-b border-white/10 bg-[#0a0a1a] overflow-y-auto overflow-x-auto p-6 space-y-8 custom-scrollbar pointer-events-auto lg:w-1/2 lg:flex-none lg:basis-auto lg:border-b-0 lg:border-r">
           
           <section className="space-y-4">
             <h2 className="text-xl font-semibold text-white">Personal Details</h2>
@@ -247,7 +267,7 @@ export default function ResumeEdit() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white">Experience</h2>
-              <Button type="button" size="sm" variant="outline" onClick={() => addSectionItem("experience")} className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+              <Button type="button" size="sm" variant="outline" onClick={() => addSectionItem("experience")} className="relative z-30 pointer-events-auto border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                 <Plus className="w-4 h-4 mr-1" /> Add experience
               </Button>
             </div>
@@ -257,15 +277,15 @@ export default function ResumeEdit() {
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <div className="grid grid-cols-2 gap-3 pr-6">
-                  <Input placeholder="Job title" value={item.jobTitle || item.title || ""} onChange={(e) => updateSectionItem("experience", index, "jobTitle", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                  <Input placeholder="Company" value={item.company || ""} onChange={(e) => updateSectionItem("experience", index, "company", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                  <Input placeholder="Location" value={item.location || ""} onChange={(e) => updateSectionItem("experience", index, "location", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Job title" value={item.jobTitle || item.title || ""} onChange={(e) => updateSectionItem("experience", index, "jobTitle", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Company" value={item.company || ""} onChange={(e) => updateSectionItem("experience", index, "company", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Location" value={item.location || ""} onChange={(e) => updateSectionItem("experience", index, "location", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
                   <div className="grid grid-cols-2 gap-2">
-                    <Input placeholder="Start date" value={item.startDate || ""} onChange={(e) => updateSectionItem("experience", index, "startDate", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                    <Input placeholder="End date" value={item.endDate || ""} onChange={(e) => updateSectionItem("experience", index, "endDate", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                    <Input placeholder="Start date" value={item.startDate || ""} onChange={(e) => updateSectionItem("experience", index, "startDate", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                    <Input placeholder="End date" value={item.endDate || ""} onChange={(e) => updateSectionItem("experience", index, "endDate", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
                   </div>
                 </div>
-                <Textarea placeholder="Describe your responsibilities and achievements..." value={item.description || ""} onChange={(e) => updateSectionItem("experience", index, "description", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white min-h-[90px]" />
+                <Textarea placeholder="Describe your responsibilities and achievements..." value={item.description || ""} onChange={(e) => updateSectionItem("experience", index, "description", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white min-h-[90px]" />
               </div>
             ))}
             {(!content?.experience || content.experience.length === 0) && <p className="text-sm text-gray-500">Add your most recent role and key achievements.</p>}
@@ -274,7 +294,7 @@ export default function ResumeEdit() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white">Education</h2>
-              <Button type="button" size="sm" variant="outline" onClick={() => addSectionItem("education")} className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+              <Button type="button" size="sm" variant="outline" onClick={() => addSectionItem("education")} className="relative z-30 pointer-events-auto border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                 <Plus className="w-4 h-4 mr-1" /> Add education
               </Button>
             </div>
@@ -284,12 +304,12 @@ export default function ResumeEdit() {
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <div className="grid grid-cols-2 gap-3 pr-6">
-                  <Input placeholder="Degree / qualification" value={item.degree || item.title || ""} onChange={(e) => updateSectionItem("education", index, "degree", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                  <Input placeholder="Institution" value={item.institution || item.school || ""} onChange={(e) => updateSectionItem("education", index, "institution", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                  <Input placeholder="Location" value={item.location || ""} onChange={(e) => updateSectionItem("education", index, "location", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
-                  <Input placeholder="Graduation date" value={item.graduationDate || item.endDate || ""} onChange={(e) => updateSectionItem("education", index, "graduationDate", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Degree / qualification" value={item.degree || item.title || ""} onChange={(e) => updateSectionItem("education", index, "degree", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Institution" value={item.institution || item.school || ""} onChange={(e) => updateSectionItem("education", index, "institution", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Location" value={item.location || ""} onChange={(e) => updateSectionItem("education", index, "location", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+                  <Input placeholder="Graduation date" value={item.graduationDate || item.endDate || ""} onChange={(e) => updateSectionItem("education", index, "graduationDate", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
                 </div>
-                <Textarea placeholder="Relevant coursework, honors, or achievements..." value={item.description || ""} onChange={(e) => updateSectionItem("education", index, "description", e.target.value)} className="bg-[#1e1e2d] border-white/5 text-white min-h-[70px]" />
+                <Textarea placeholder="Relevant coursework, honors, or achievements..." value={item.description || ""} onChange={(e) => updateSectionItem("education", index, "description", e.target.value)} className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white min-h-[70px]" />
               </div>
             ))}
             {(!content?.education || content.education.length === 0) && <p className="text-sm text-gray-500">Add your degree, institution, and graduation details.</p>}
@@ -297,13 +317,18 @@ export default function ResumeEdit() {
 
           <section className="space-y-4">
             <h2 className="text-xl font-semibold text-white">Skills</h2>
-            <Textarea
-              value={skillsText}
-              onChange={(e) => setContent({ ...content, skills: e.target.value.split(",").map((skill) => skill.trim()).filter(Boolean) })}
-              placeholder="JavaScript, React, Node.js, SQL, Python"
-              className="bg-[#1e1e2d] border-white/5 text-white min-h-[90px]"
-            />
-            <p className="text-xs text-gray-500">Separate skills with commas.</p>
+            <div className="flex gap-2">
+              <Input value={newSkill} onChange={(e) => setNewSkill(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} placeholder="Add a skill" className="relative z-30 pointer-events-auto bg-[#1e1e2d] border-white/5 text-white" />
+              <Button type="button" onClick={addSkill} className="relative z-30 pointer-events-auto shrink-0 bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> Add skill</Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(content?.skills || []).map((skill: any, index: number) => (
+                <button type="button" key={`${skill}-${index}`} onClick={() => removeSkill(index)} className="relative z-30 pointer-events-auto rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-sm text-blue-300 hover:bg-red-500/10 hover:text-red-300" title="Remove skill">
+                  {typeof skill === "string" ? skill : skill.name || "Skill"} ×
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">Add skills one at a time. Select a skill to remove it.</p>
           </section>
 
           <section className="space-y-4">
@@ -343,8 +368,8 @@ export default function ResumeEdit() {
         </div>
 
         {/* Live Preview Panel */}
-        <div className="flex-1 bg-[#1e1e2d] overflow-y-auto p-8 flex justify-center custom-scrollbar">
-          <div className="w-[800px] min-h-[1056px] bg-white text-black shadow-2xl p-12 shrink-0">
+        <div className="relative z-10 flex min-h-0 w-full min-w-0 flex-1 basis-1/2 items-start justify-center overflow-y-auto overflow-x-auto bg-[#1e1e2d] p-4 sm:p-6 lg:w-1/2 lg:flex-none lg:basis-auto lg:p-8 custom-scrollbar">
+          <div className="w-full max-w-[800px] min-w-0 min-h-[1056px] bg-white text-black shadow-2xl p-6 sm:p-8 lg:p-12">
             {/* Simple classic template rendering */}
             <div className="text-center mb-6">
               <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">{content?.personalDetails?.name || 'Your Name'}</h1>

@@ -18,6 +18,7 @@ import HomePage from "./pages/home";
 import DashboardPage from "./pages/dashboard";
 import ResumeHub from "./pages/resume/index";
 import ResumeEdit from "./pages/resume/edit";
+import UploadResumeCheck from "./pages/resume/check";
 import InterviewHub from "./pages/interview/index";
 import InterviewRoom from "./pages/interview/room";
 import CodingHub from "./pages/coding/index";
@@ -106,30 +107,15 @@ function HomeRedirect() {
  *  Runs synchronously during render so the ref is populated before any
  *  sibling component's useQuery fires its first fetch. */
 function ClerkAuthBridge() {
-  const { getToken, isSignedIn, isLoaded } = useAuth();
+  const { getToken } = useAuth();
   // Synchronous assignment during render — intentional (no re-render side-effect).
   _authRef.current = getToken;
 
   useEffect(() => {
-    if (!isLoaded) return;
-    // Debug: check what token Clerk returns
-    getToken().then(token => {
-      console.log("[ClerkAuthBridge] isSignedIn:", isSignedIn, "token:", token ? token.substring(0, 30) + "..." : null);
-      // Hit the debug endpoint with the token to see if it verifies
-      if (token) {
-        fetch("/api/debug-auth", { headers: { Authorization: `Bearer ${token}` } })
-          .then(r => r.json())
-          .then(d => console.log("[debug-auth with token]", d))
-          .catch(console.error);
-      } else {
-        fetch("/api/debug-auth")
-          .then(r => r.json())
-          .then(d => console.log("[debug-auth no token]", d))
-          .catch(console.error);
-      }
-    });
-    return () => { _authRef.current = null; };
-  }, [isLoaded, isSignedIn]);
+    return () => {
+      _authRef.current = null;
+    };
+  }, []);
 
   return null;
 }
@@ -179,6 +165,7 @@ function ClerkProviderWithRoutes() {
             {/* Protected Routes */}
             <Route path="/dashboard" component={DashboardPage} />
             <Route path="/resume" component={ResumeHub} />
+            <Route path="/resume/check" component={UploadResumeCheck} />
             <Route path="/resume/:id" component={ResumeEdit} />
             <Route path="/interview" component={InterviewHub} />
             <Route path="/interview/:id" component={InterviewRoom} />

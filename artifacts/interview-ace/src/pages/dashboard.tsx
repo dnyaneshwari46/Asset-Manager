@@ -1,13 +1,14 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useGetDashboardStats, useGetDashboardActivity } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardActivity, useListResumes } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Loader2, TrendingUp, Target, Code2, MessageSquare, Briefcase } from "lucide-react";
+import { Loader2, TrendingUp, Target, Code2, MessageSquare, Briefcase, Upload } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from "recharts";
 
 export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading, isError: statsError } = useGetDashboardStats();
   const { data: activity, isLoading: activityLoading } = useGetDashboardActivity();
+  const { data: resumes } = useListResumes();
 
   if (statsLoading || activityLoading) {
     return (
@@ -142,6 +143,38 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="glass rounded-2xl p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Saved resumes</h2>
+              <p className="text-sm text-gray-400 mt-1">Your builder resumes and uploaded ATS reports.</p>
+            </div>
+            <Link href="/resume/check" className="inline-flex items-center text-sm font-medium text-blue-300 hover:text-blue-200">
+              <Upload className="w-4 h-4 mr-2" /> Check another resume
+            </Link>
+          </div>
+          {resumes && resumes.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {resumes.slice(0, 6).map((resume) => {
+                const score = resume.atsScore ?? 0;
+                return (
+                <Link key={resume.id} href={`/resume/${resume.id}`} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-4 hover:bg-white/[0.07] transition-colors">
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{resume.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">{resume.content?.type === "ats-report" ? "Uploaded ATS report" : "Resume builder"}</p>
+                  </div>
+                  <span className={`ml-3 shrink-0 text-sm font-semibold ${score >= 80 ? "text-emerald-400" : score >= 50 ? "text-amber-400" : "text-red-400"}`}>
+                    {resume.atsScore === null ? "Not scored" : `${score}/100`}
+                  </span>
+                </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No saved resumes yet. Upload one to get your first ATS report.</p>
+          )}
         </div>
       </div>
     </AppLayout>

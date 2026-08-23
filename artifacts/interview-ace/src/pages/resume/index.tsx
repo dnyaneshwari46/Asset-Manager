@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useListResumes, useCreateResume, useDeleteResume } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { Loader2, Plus, FileText, Trash2, FileEdit } from "lucide-react";
+import { Loader2, Plus, FileText, Trash2, FileEdit, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -58,14 +58,21 @@ export default function ResumeHub() {
             <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Resume Builder</h1>
             <p className="text-gray-400">Create, analyze, and manage your ATS-friendly resumes.</p>
           </div>
-          <Button 
-            onClick={handleCreate} 
-            disabled={createResume.isPending}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-500/20"
-          >
-            {createResume.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-            New Resume
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/resume/check">
+              <Button variant="outline" className="border-blue-500/30 text-blue-300 hover:bg-blue-500/10 rounded-xl">
+                <Upload className="w-4 h-4 mr-2" /> Upload & Check ATS
+              </Button>
+            </Link>
+            <Button 
+              onClick={handleCreate} 
+              disabled={createResume.isPending}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-500/20"
+            >
+              {createResume.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              New Resume
+            </Button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

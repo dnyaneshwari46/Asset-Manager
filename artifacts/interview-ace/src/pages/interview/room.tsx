@@ -1,6 +1,6 @@
-import { useGetInterview, getGetInterviewQueryKey, useSubmitAnswer } from "@workspace/api-client-react";
+import { useGetInterview, getGetInterviewQueryKey, useSubmitAnswer, useListQuestions } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Loader2, Mic, SquareSquare, MonitorUp, Send, CheckCircle2, ChevronRight, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,6 +10,10 @@ export default function InterviewRoom() {
   const interviewId = parseInt(id || "0", 10);
   const { data: interview, isLoading } = useGetInterview(interviewId, { query: { enabled: !!interviewId, queryKey: getGetInterviewQueryKey(interviewId) } });
   const submitAnswer = useSubmitAnswer();
+  const { data: questions, isLoading: questionsLoading } = useListQuestions(
+    interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined,
+    { query: { enabled: !!interview } },
+  );
   const [, setLocation] = useLocation();
 
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -21,17 +25,22 @@ export default function InterviewRoom() {
   const recognitionRef = useRef<any>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const lastSpokenQuestionRef = useRef("");
 
-  // Fallback mock questions since backend might not send them embedded yet
-  const mockQuestions = [
-    { id: 1, text: "Can you describe a time when you had to deal with a difficult team member?" },
-    { id: 2, text: "How would you design the architecture for a scalable URL shortener service?" },
-    { id: 3, text: "Explain the differences between REST and GraphQL. When would you use each?" }
-  ];
+  const interviewQuestions = useMemo(() => {
+    if (!questions?.length) return [];
+    const unique = Array.from(new Map(questions.map((question) => [question.text.trim(), question])).values());
+    const preferredOrder = ["technical", "scenario", "behavioral", "hr"];
+    const selected = preferredOrder.flatMap((type) => unique.filter((question) => question.type.toLowerCase() === type).slice(0, 5));
+    return Array.from(new Map([...selected, ...unique].map((question) => [question.id, question])).values()).slice(0, 15);
+  }, [questions]);
 
-  const currentQuestion = mockQuestions[currentQuestionIdx];
+  const currentQuestion = interviewQuestions[currentQuestionIdx];
 
   const speakQuestion = (text: string) => {
+    const questionKey = text.trim().slice(0, 10).toLowerCase();
+    if (!questionKey || questionKey === lastSpokenQuestionRef.current) return;
+    lastSpokenQuestionRef.current = questionKey;
     window.speechSynthesis.cancel(); // Stop any ongoing speech
     setIsAiSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text);
@@ -49,7 +58,8 @@ export default function InterviewRoom() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Speak initial question on load
+  // Speak each question once. Keeping the dependency on the index prevents
+  // every transcript/evaluation render from starting the same utterance again.
   useEffect(() => {
     if (currentQuestion && !evaluation) {
       const t = setTimeout(() => speakQuestion(currentQuestion.text), 1000);
@@ -57,6 +67,11 @@ export default function InterviewRoom() {
     }
     return undefined;
   }, [currentQuestionIdx, currentQuestion]);
+
+  useEffect(() => () => {
+    window.speechSynthesis.cancel();
+    recognitionRef.current?.stop?.();
+  }, []);
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -100,8 +115,9 @@ export default function InterviewRoom() {
     }
   };
 
-  const handleSubmit = () => {
-    if (!transcript.trim()) return;
+  const handleSubmit = (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!transcript.trim() || !currentQuestion || submitAnswer.isPending) return;
     
     stopListening();
     
@@ -110,6 +126,7 @@ export default function InterviewRoom() {
       data: { questionId: currentQuestion.id, answer: transcript } 
     }, {
       onSuccess: (res) => {
+        setTranscript("");
         setEvaluation(res);
         // AI reads brief feedback
         speakQuestion(`Okay, I've noted your answer. ${res.feedback.substring(0, 100)}... Let's move on when you're ready.`);
@@ -120,7 +137,7 @@ export default function InterviewRoom() {
   const handleNext = () => {
     setEvaluation(null);
     setTranscript("");
-    if (currentQuestionIdx < mockQuestions.length - 1) {
+    if (currentQuestionIdx < interviewQuestions.length - 1) {
       setCurrentQuestionIdx(prev => prev + 1);
     } else {
       setLocation('/interview'); // Done
@@ -138,7 +155,7 @@ export default function InterviewRoom() {
     }
   };
 
-  if (isLoading || !interview) {
+  if (isLoading || !interview || questionsLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
@@ -172,7 +189,7 @@ export default function InterviewRoom() {
       </header>
 
       {/* Main Stage */}
-      <main className="flex-1 relative flex items-center justify-center p-8">
+      <main className="flex-1 relative flex items-center justify-center p-8 pb-28 md:pb-8">
         {/* Background glow for AI speaking state */}
         <div className={`absolute inset-0 transition-opacity duration-1000 pointer-events-none ${isAiSpeaking ? 'opacity-100' : 'opacity-0'}`}>
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/10 blur-[150px] rounded-full"></div>
@@ -188,7 +205,7 @@ export default function InterviewRoom() {
                 exit={{ opacity: 0, y: -20 }}
                 className="text-center"
               >
-                <div className="mb-12">
+                  <div className="mb-12">
                   <div className="w-24 h-24 mx-auto bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(139,92,246,0.3)] mb-8 relative">
                     <User className="w-10 h-10 text-white" />
                     {isAiSpeaking && (
@@ -196,12 +213,13 @@ export default function InterviewRoom() {
                     )}
                   </div>
                   <h2 className="text-3xl md:text-5xl font-semibold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70">
-                    {currentQuestion?.text}
+                    {currentQuestion?.text || "No questions are available for this role yet."}
                   </h2>
                 </div>
 
-                <div className="max-w-2xl mx-auto glass p-2 rounded-2xl flex items-center gap-2">
+                <form onSubmit={handleSubmit} className="fixed bottom-0 left-0 right-0 z-30 mx-auto max-w-2xl glass p-2 rounded-t-2xl md:static md:rounded-2xl flex items-center gap-2 border border-white/10 bg-[#0f0f1d]/95 backdrop-blur-xl">
                   <button 
+                    type="button"
                     onClick={toggleRecording}
                     className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${
                       isRecording ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -217,13 +235,13 @@ export default function InterviewRoom() {
                     className="flex-1 bg-transparent border-none outline-none px-4 text-lg text-white placeholder:text-gray-500"
                   />
                   <Button 
-                    onClick={handleSubmit} 
-                    disabled={submitAnswer.isPending || !transcript.trim()}
+                    type="submit"
+                    disabled={submitAnswer.isPending || !transcript.trim() || !currentQuestion}
                     className="bg-blue-600 hover:bg-blue-700 h-14 px-8 rounded-xl shadow-lg shadow-blue-500/20"
                   >
                     {submitAnswer.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </Button>
-                </div>
+                </form>
                 
                 {isRecording && (
                   <div className="mt-6 flex justify-center gap-1 h-8 items-end">

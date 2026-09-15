@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useEffect } from "react";
 
 const formSchema = z.object({
   category: z.enum(['java', 'python', 'mern', 'fullstack', 'data_analyst', 'data_science', 'ai_ml', 'hr']),
@@ -18,6 +19,7 @@ const formSchema = z.object({
 
 export default function InterviewHub() {
   const { data: interviews, isLoading } = useListInterviews();
+  const { data: profile } = useGetMe();
   const createInterview = useCreateInterview();
   const [, setLocation] = useLocation();
 
@@ -28,6 +30,21 @@ export default function InterviewHub() {
       difficulty: 'intermediate',
     },
   });
+
+  useEffect(() => {
+    const targetRole = profile?.targetRole?.toLowerCase() || "";
+    const inferredCategory =
+      targetRole.includes("java") ? "java" :
+      targetRole.includes("python") ? "python" :
+      targetRole.includes("data analyst") ? "data_analyst" :
+      targetRole.includes("data scientist") ? "data_science" :
+      targetRole.includes("machine") || targetRole.includes("ai") ? "ai_ml" :
+      targetRole.includes("frontend") || targetRole.includes("react") ? "mern" :
+      targetRole.includes("backend") ? "fullstack" :
+      targetRole.includes("hr") || targetRole.includes("human") ? "hr" :
+      null;
+    if (inferredCategory) form.setValue("category", inferredCategory);
+  }, [profile?.targetRole, form]);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     createInterview.mutate({ data: values }, {
@@ -77,7 +94,7 @@ export default function InterviewHub() {
                     name="category"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-gray-300">Role / Category</FormLabel>
+                        <FormLabel className="text-gray-300">Job Role</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger className="bg-[#1e1e2d] border-white/10 text-white focus:ring-violet-500">
@@ -85,8 +102,8 @@ export default function InterviewHub() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent className="bg-[#1e1e2d] border-white/10 text-white">
-                            <SelectItem value="fullstack">Full Stack Engineer</SelectItem>
-                            <SelectItem value="mern">MERN Stack</SelectItem>
+                          <SelectItem value="fullstack">Backend / Full Stack Engineer</SelectItem>
+                          <SelectItem value="mern">Frontend / React Developer</SelectItem>
                             <SelectItem value="java">Java Developer</SelectItem>
                             <SelectItem value="python">Python Developer</SelectItem>
                             <SelectItem value="data_science">Data Scientist</SelectItem>

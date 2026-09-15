@@ -1,0 +1,33 @@
+Fix critical bugs in /interview section:
+
+BUG 1 - Repeating Question Loop:
+The AI is repeating the same question half part again and again in a loop. Example it says "Tell me about your..." "Tell me about your..." non-stop.
+Fix: 
+- Check the streaming response logic in interview chat. You are probably appending the token stream incorrectly or not clearing previous chunk.
+- Make sure you are using proper state update: setMessages(prev => [...prev]) not overwriting.
+- Add a check to prevent duplicate question if last AI message contains same 10 characters.
+- Stop generation after one complete question and wait for user input.
+
+BUG 2 - Send Option Not Working:
+The Send button and Enter key is not sending the user answer. The message stays in input.
+Fix:
+- Check handleSendMessage() function - it should not be disabled by isLoading state
+- Make sure onClick={handleSend} is properly bound and not inside form that causes page reload
+- Add e.preventDefault() and clear input after send
+- Ensure API call to /api/interview/chat is actually firing and response is handled
+- Fix mobile: make input area position:fixed and z-index high so keyboard doesn't hide it
+
+NEW FEATURE - Job Role Specific Questions:
+Currently questions are generic. Update the interview prompt to be explicitly job-role based.
+- Take the resume data from dashboard.tax / localStorage - extract Skills, Experience, Job Title (like your resume has IRO - Just Dial)
+- If user has selected a target job role in personal details, use that as primary context
+- Update system prompt for Gemini/OpenAI to:
+  "You are a senior technical interviewer for [JOB_ROLE] role. Ask questions strictly related to [JOB_ROLE]. 
+   If resume shows Java, ask Java questions. If role is Frontend, ask React, JS, CSS. 
+   Ask 15 questions total: 5 technical, 5 scenario-based, 5 behavioral related to that role.
+   Do NOT repeat questions. Ask one question at a time. Wait for answer."
+- Add a dropdown before starting interview: Select Job Role (Java Developer, Frontend, Backend, HR, Data Analyst etc) and generate questions accordingly.
+
+After fixing, test the flow: Start Interview -> AI asks Q1 -> I type answer -> Click Send -> AI asks Q2 (different, role-specific) without repeating.
+
+Keep the existing UI design.

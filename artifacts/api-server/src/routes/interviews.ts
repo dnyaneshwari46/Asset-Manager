@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray } from "drizzle-orm";
-import { db, interviewSessionsTable, interviewAnswersTable, questionsTable, activityLogTable } from "@workspace/db";
+import { eq, and, inArray, desc } from "drizzle-orm";
+import { db, interviewSessionsTable, interviewAnswersTable, questionsTable, activityLogTable, resumesTable } from "@workspace/db";
 import { requireAuth, resolveDbUser } from "../lib/auth";
 import {
   ListInterviewsResponse, CreateInterviewBody, CreateInterviewResponse,
@@ -86,13 +86,41 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     .where(eq(questionsTable.id, body.data.questionId));
   if (!question) { res.status(404).json({ error: "Question not found" }); return; }
 
+  const [latestResume] = await db.select().from(resumesTable)
+    .where(eq(resumesTable.userId, userId))
+    .orderBy(desc(resumesTable.updatedAt))
+    .limit(1);
+  const resumeContent = (latestResume?.content || {}) as Record<string, unknown>;
+  const resumeContext = JSON.stringify({
+    targetRole: resumeContent.targetRole,
+    skills: resumeContent.skills,
+    experience: resumeContent.experience,
+    summary: resumeContent.summary,
+  }).slice(0, 6000);
+  const roleLabels: Record<string, string> = {
+    java: "Java Developer",
+    python: "Python Developer",
+    mern: "Frontend / React Developer",
+    fullstack: "Backend / Full Stack Engineer",
+    data_analyst: "Data Analyst",
+    data_science: "Data Scientist",
+    ai_ml: "AI / ML Engineer",
+    hr: "HR / Behavioral",
+  };
+  const jobRole = roleLabels[session.category] ?? session.category;
+
   // AI evaluation via Gemini
-  const prompt = `You are a senior interviewer at a top tech company (Google/Amazon/Meta level).
+  const prompt = `You are a senior technical interviewer for the ${jobRole} role at a top tech company (Google/Amazon/Meta level).
+Ask questions and evaluate answers strictly in the context of ${jobRole}.
+The interview plan has 15 questions total: 5 technical, 5 scenario-based, and 5 behavioral questions.
+Do not repeat questions. Ask one question at a time and wait for the candidate's answer.
+Use the candidate's resume context to make follow-ups relevant. If the resume shows Java, ask Java questions. If the role is Frontend, focus on React, JavaScript, and CSS.
 Evaluate this interview answer and return ONLY valid JSON (no markdown).
 
 Question: ${question.text}
 Category: ${question.category}
 Difficulty: ${question.difficulty}
+Candidate resume context: ${resumeContext}
 Candidate's Answer: ${body.data.answer}
 Sample Answer (reference only): ${question.sampleAnswer ?? "N/A"}
 

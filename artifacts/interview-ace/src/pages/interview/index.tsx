@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useListInterviews, useCreateInterview } from "@workspace/api-client-react";
+import { useListInterviews, useCreateInterview, useGetMe } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { Loader2, Mic, Play, Settings, Plus, Video } from "lucide-react";
+import { Loader2, Mic, Play, Plus, Video } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -64,7 +64,7 @@ export default function InterviewHub() {
     );
   }
 
-  const activeInterviews = interviews?.filter(i => i.status === 'in_progress') || [];
+  const activeInterviews = interviews?.filter(i => i.status === 'in_progress' || i.status === 'active') || [];
   const pastInterviews = interviews?.filter(i => i.status === 'completed') || [];
 
   return (

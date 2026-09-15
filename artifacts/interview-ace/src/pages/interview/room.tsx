@@ -1,4 +1,4 @@
-import { useGetInterview, getGetInterviewQueryKey, useSubmitAnswer, useListQuestions } from "@workspace/api-client-react";
+import { useGetInterview, getGetInterviewQueryKey, useSubmitAnswer, useListQuestions, getListQuestionsQueryKey } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Loader2, Mic, SquareSquare, MonitorUp, Send, CheckCircle2, ChevronRight, User } from "lucide-react";
@@ -12,7 +12,7 @@ export default function InterviewRoom() {
   const submitAnswer = useSubmitAnswer();
   const { data: questions, isLoading: questionsLoading } = useListQuestions(
     interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined,
-    { query: { enabled: !!interview } },
+    { query: { enabled: !!interview, queryKey: getListQuestionsQueryKey(interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined) } },
   );
   const [, setLocation] = useLocation();
 
@@ -24,8 +24,10 @@ export default function InterviewRoom() {
   
   const recognitionRef = useRef<any>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastSpokenQuestionRef = useRef("");
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const interviewQuestions = useMemo(() => {
     if (!questions?.length) return [];
@@ -61,12 +63,28 @@ export default function InterviewRoom() {
   // Speak each question once. Keeping the dependency on the index prevents
   // every transcript/evaluation render from starting the same utterance again.
   useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return undefined;
+    const updateKeyboardOffset = () => {
+      const offset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setKeyboardOffset(offset);
+    };
+    updateKeyboardOffset();
+    viewport.addEventListener("resize", updateKeyboardOffset);
+    viewport.addEventListener("scroll", updateKeyboardOffset);
+    return () => {
+      viewport.removeEventListener("resize", updateKeyboardOffset);
+      viewport.removeEventListener("scroll", updateKeyboardOffset);
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentQuestion && !evaluation) {
       const t = setTimeout(() => speakQuestion(currentQuestion.text), 1000);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [currentQuestionIdx, currentQuestion]);
+  }, [currentQuestionIdx, currentQuestion?.id, evaluation]);
 
   useEffect(() => () => {
     window.speechSynthesis.cancel();
@@ -173,7 +191,7 @@ export default function InterviewRoom() {
             <span className="font-medium text-gray-300">AI Interviewer</span>
           </div>
           <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-400">
-            Q {currentQuestionIdx + 1} of {mockQuestions.length}
+             Q {currentQuestionIdx + 1} of {interviewQuestions.length || "—"}
           </div>
         </div>
         
@@ -217,7 +235,7 @@ export default function InterviewRoom() {
                   </h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="fixed bottom-0 left-0 right-0 z-30 mx-auto max-w-2xl glass p-2 rounded-t-2xl md:static md:rounded-2xl flex items-center gap-2 border border-white/10 bg-[#0f0f1d]/95 backdrop-blur-xl">
+                <form ref={composerRef} onSubmit={handleSubmit} style={{ bottom: keyboardOffset }} className="fixed left-0 right-0 z-30 mx-auto max-w-2xl glass p-2 rounded-t-2xl md:static md:rounded-2xl flex items-center gap-2 border border-white/10 bg-[#0f0f1d]/95 backdrop-blur-xl md:bottom-auto">
                   <button 
                     type="button"
                     onClick={toggleRecording}

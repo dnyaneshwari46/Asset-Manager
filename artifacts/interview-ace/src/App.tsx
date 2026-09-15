@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { ClerkProvider, SignUp, Show, useClerk, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { dark } from '@clerk/themes';
@@ -142,6 +142,24 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background text-gray-400">
+        Loading your workspace…
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Redirect to="/" />;
+  }
+
+  return <>{children}</>;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -163,17 +181,17 @@ function ClerkProviderWithRoutes() {
             <Route path="/sign-up/*?" component={SignUpPage} />
             
             {/* Protected Routes */}
-            <Route path="/dashboard" component={DashboardPage} />
-            <Route path="/resume" component={ResumeHub} />
-            <Route path="/resume/check" component={UploadResumeCheck} />
-            <Route path="/resume/:id" component={ResumeEdit} />
-            <Route path="/interview" component={InterviewHub} />
-            <Route path="/interview/:id" component={InterviewRoom} />
-            <Route path="/coding" component={CodingHub} />
-            <Route path="/coding/:id" component={CodingIDE} />
-            <Route path="/learning" component={LearningDashboard} />
-            <Route path="/admin" component={AdminPanel} />
-            <Route path="/profile" component={ProfilePage} />
+            <Route path="/dashboard">{() => <ProtectedRoute><DashboardPage /></ProtectedRoute>}</Route>
+            <Route path="/resume">{() => <ProtectedRoute><ResumeHub /></ProtectedRoute>}</Route>
+            <Route path="/resume/check">{() => <ProtectedRoute><UploadResumeCheck /></ProtectedRoute>}</Route>
+            <Route path="/resume/:id">{() => <ProtectedRoute><ResumeEdit /></ProtectedRoute>}</Route>
+            <Route path="/interview">{() => <ProtectedRoute><InterviewHub /></ProtectedRoute>}</Route>
+            <Route path="/interview/:id">{() => <ProtectedRoute><InterviewRoom /></ProtectedRoute>}</Route>
+            <Route path="/coding">{() => <ProtectedRoute><CodingHub /></ProtectedRoute>}</Route>
+            <Route path="/coding/:id">{() => <ProtectedRoute><CodingIDE /></ProtectedRoute>}</Route>
+            <Route path="/learning">{() => <ProtectedRoute><LearningDashboard /></ProtectedRoute>}</Route>
+            <Route path="/admin">{() => <ProtectedRoute><AdminPanel /></ProtectedRoute>}</Route>
+            <Route path="/profile">{() => <ProtectedRoute><ProfilePage /></ProtectedRoute>}</Route>
 
             <Route component={NotFound} />
           </Switch>

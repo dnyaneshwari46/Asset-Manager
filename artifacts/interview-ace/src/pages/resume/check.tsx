@@ -9,8 +9,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   FileText,
-  Github,
-  Linkedin,
   Loader2,
   Sparkles,
   Upload,
@@ -35,69 +33,94 @@ type Report = {
   issues: string[];
   strengths: string[];
   wordCount: number;
+  breakdown: Array<{ label: string; earned: number; max: number; detail: string }>;
 };
 
 const ACCEPTED_TYPES = ".pdf,.docx,.txt";
-const ACTION_VERBS = /\b(achieved|built|created|delivered|designed|developed|drove|improved|increased|launched|led|managed|optimized|reduced|resolved|scaled|shipped|streamlined)\b/i;
-const KEYWORDS = /\b(java|javascript|typescript|react|python|node(?:\.js)?|sql|aws|azure|docker|kubernetes|git|html|css|machine learning|data structures|system design)\b/i;
+const ACTION_VERB_LIST = ["achieved", "built", "created", "delivered", "designed", "developed", "drove", "improved", "increased", "launched", "led", "managed", "optimized", "reduced", "resolved", "scaled", "shipped", "streamlined"];
+const KEYWORD_LIST = ["java", "javascript", "typescript", "react", "python", "node.js", "sql", "aws", "azure", "docker", "kubernetes", "git", "html", "css", "machine learning", "data structures", "system design"];
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE = /(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]\d{4}\b/;
+const LOCATION = /\b(?:india|united states|usa|uk|canada|australia|new york|california|london|mumbai|delhi|bengaluru|bangalore|hyderabad|pune|remote)\b|\b\d{1,5}\s+\w+(?:\s+\w+)?\s+(?:street|road|avenue|drive)\b/i;
 const LINKEDIN = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i;
 const GITHUB = /(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+/i;
 
+function countTerms(text: string, terms: string[]) {
+  return terms.filter((term) => new RegExp(`\\b${term.replace(".", "\\.")}\\b`, "i").test(text)).length;
+}
+
 function scoreResume(text: string, signals: LayoutSignals): Report {
   const normalized = text.replace(/\s+/g, " ").trim();
-  const lower = normalized.toLowerCase();
   const words = normalized ? normalized.split(/\s+/).length : 0;
-  let score = 0;
+  const breakdown: Report["breakdown"] = [];
   const issues: string[] = [];
   const strengths: string[] = [];
 
-  const contactScore = Number(EMAIL.test(normalized)) * 7 + Number(PHONE.test(normalized)) * 7 + Number(/\b(location|city|state|india|usa|uk|canada|new york|california)\b/i.test(normalized)) * 6;
-  score += contactScore;
-  if (contactScore === 20) strengths.push("Email, phone, and location are present.");
-  else issues.push("Add a professional email, phone number, and location to make your contact details complete.");
+  const contacts = [
+    { label: "Email", found: EMAIL.test(normalized), points: 7 },
+    { label: "Phone", found: PHONE.test(normalized), points: 7 },
+    { label: "Location", found: LOCATION.test(normalized), points: 6 },
+  ];
+  const contactScore = contacts.reduce((total, item) => total + (item.found ? item.points : 0), 0);
+  breakdown.push({ label: "Contact information", earned: contactScore, max: 20, detail: `${contacts.filter((item) => item.found).length}/3 detected` });
+  contacts.filter((item) => !item.found).forEach((item) => issues.push(`Add a professional ${item.label.toLowerCase()} to earn the missing ${item.points} contact points.`));
+  if (contactScore === 20) strengths.push("Email, phone, and location are all present.");
 
   const sections = [
-    { name: "Experience", pattern: /\b(experience|work history|employment)\b/i },
-    { name: "Education", pattern: /\b(education|academic background|degree)\b/i },
-    { name: "Skills", pattern: /\b(skills|technical skills|technologies)\b/i },
-    { name: "Summary", pattern: /\b(summary|profile|objective|about me)\b/i },
+    { name: "Experience", pattern: /\b(experience|work history|employment)\b/i, points: 8 },
+    { name: "Education", pattern: /\b(education|academic background|degree)\b/i, points: 5 },
+    { name: "Skills", pattern: /\b(skills|technical skills|technologies)\b/i, points: 6 },
+    { name: "Summary", pattern: /\b(summary|profile|objective|about me)\b/i, points: 6 },
   ];
-  const sectionCount = sections.filter(({ pattern }) => pattern.test(normalized)).length;
-  score += Math.round((sectionCount / 4) * 25);
-  if (sectionCount === 4) strengths.push("Standard Summary, Experience, Education, and Skills sections are present.");
-  else issues.push(`Add the missing standard sections: ${sections.filter(({ pattern }) => !pattern.test(normalized)).map(({ name }) => name).join(", ")}.`);
+  const foundSections = sections.filter(({ pattern }) => pattern.test(normalized));
+  const sectionScore = foundSections.reduce((total, section) => total + section.points, 0);
+  breakdown.push({ label: "Standard sections", earned: sectionScore, max: 25, detail: `${foundSections.length}/4 detected` });
+  sections.filter(({ pattern }) => !pattern.test(normalized)).forEach((section) => issues.push(`Add a clear ${section.name} section heading to earn ${section.points} more points.`));
+  if (foundSections.length === sections.length) strengths.push("Summary, Experience, Education, and Skills headings are clearly present.");
 
+  const layoutPenalty = Math.min(15, signals.reasons.length * 5);
+  const layoutScore = 15 - layoutPenalty;
+  breakdown.push({ label: "ATS-safe formatting", earned: layoutScore, max: 15, detail: signals.reasons.length ? signals.reasons.join(", ") : "No complex layout signals detected" });
   if (!signals.hasComplexLayout) {
-    score += 15;
     strengths.push("The document uses a simple, ATS-friendly layout.");
   } else {
-    issues.push(`Simplify the layout for ATS parsing${signals.reasons.length ? `: ${signals.reasons.join(", ")}.` : "."} Avoid tables, images, graphics, and multi-column formatting.`);
+    issues.push(`Remove ${signals.reasons.join(", ")} to recover up to ${layoutPenalty} formatting points. Use one column with standard headings.`);
   }
 
-  if (words >= 300 && words <= 800) {
-    score += 10;
+  const lengthScore = words >= 300 && words <= 800 ? 10 : words >= 200 && words <= 1000 ? 7 : words >= 100 && words <= 1200 ? 4 : 0;
+  breakdown.push({ label: "Resume length", earned: lengthScore, max: 10, detail: `${words} words; target is 300–800` });
+  if (lengthScore === 10) {
     strengths.push(`Resume length is in the recommended range (${words} words).`);
   } else {
-    issues.push(`Keep the resume between 300 and 800 words; this upload contains ${words} words.`);
+    issues.push(`Adjust the resume toward 300–800 words. At ${words} words, it earns ${lengthScore}/10 length points.`);
   }
 
-  if (ACTION_VERBS.test(lower) && KEYWORDS.test(lower)) {
-    score += 15;
+  const actionCount = countTerms(normalized, ACTION_VERB_LIST);
+  const keywordCount = countTerms(normalized, KEYWORD_LIST);
+  const actionScore = Math.min(7, Math.round((actionCount / 5) * 7));
+  const keywordScore = Math.min(8, Math.round((keywordCount / 6) * 8));
+  const languageScore = actionScore + keywordScore;
+  breakdown.push({ label: "Action verbs & keywords", earned: languageScore, max: 15, detail: `${actionCount} action verbs, ${keywordCount} technical keywords` });
+  if (languageScore === 15) {
     strengths.push("Action verbs and relevant technical keywords were detected.");
   } else {
-    issues.push(`Use measurable action verbs and role-relevant keywords${ACTION_VERBS.test(lower) ? " such as Java, React, Python, SQL, or AWS." : " (for example: built, led, improved, and delivered)."} `);
+    if (actionScore < 7) issues.push(`Add measurable action verbs such as built, led, improved, and delivered. Current action-verb score: ${actionScore}/7.`);
+    if (keywordScore < 8) issues.push(`Add role-relevant keywords such as Java, React, Python, SQL, or AWS. Current keyword score: ${keywordScore}/8.`);
   }
 
-  if (LINKEDIN.test(normalized) || GITHUB.test(normalized)) {
-    score += 15;
+  const linkedInScore = LINKEDIN.test(normalized) ? 8 : 0;
+  const githubScore = GITHUB.test(normalized) ? 7 : 0;
+  const profileScore = linkedInScore + githubScore;
+  breakdown.push({ label: "Professional links", earned: profileScore, max: 15, detail: `${linkedInScore ? "LinkedIn" : ""}${linkedInScore && githubScore ? " + " : ""}${githubScore ? "GitHub" : "none"} detected` });
+  if (profileScore === 15) {
     strengths.push("A LinkedIn or GitHub profile link is included.");
   } else {
-    issues.push("Add a LinkedIn or GitHub profile link so recruiters can verify your professional work.");
+    if (!linkedInScore) issues.push("Add a LinkedIn profile link to earn 8 more points.");
+    if (!githubScore) issues.push("Add a GitHub profile link to earn 7 more points.");
   }
 
-  return { score, issues, strengths, wordCount: words };
+  const score = breakdown.reduce((total, item) => total + item.earned, 0);
+  return { score: Math.max(0, Math.min(100, score)), issues, strengths, wordCount: words, breakdown };
 }
 
 async function extractPdf(file: File): Promise<ParsedResume> {
@@ -266,6 +289,17 @@ export default function UploadResumeCheck() {
               </div>
               <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10"><div className={`h-full transition-all ${scoreColor}`} style={{ width: `${report.score}%` }} /></div>
               <div className="mt-3 flex justify-between text-xs text-gray-500"><span>Needs work</span><span>Good</span><span>Strong</span></div>
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                {report.breakdown.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-gray-300">{item.label}</span>
+                      <span className="text-sm font-semibold text-white">{item.earned}/{item.max}</span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-gray-500">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
               <div className="mt-8 space-y-3">
                 {report.strengths.map((item) => <p key={item} className="flex gap-2 text-sm text-emerald-300"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {item}</p>)}
               </div>

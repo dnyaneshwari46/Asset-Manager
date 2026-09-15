@@ -40,7 +40,7 @@ router.post("/interviews", requireAuth, resolveDbUser, async (req, res): Promise
 
   const [session] = await db.insert(interviewSessionsTable).values({
     userId, category: parsed.data.category, difficulty: parsed.data.difficulty,
-    questionsAsked: questions.length,
+    questionsAsked: Math.min(15, questions.length),
   }).returning();
 
   await db.insert(activityLogTable).values({
@@ -81,10 +81,28 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
   const [session] = await db.select().from(interviewSessionsTable)
     .where(and(eq(interviewSessionsTable.id, params.data.id), eq(interviewSessionsTable.userId, userId)));
   if (!session) { res.status(404).json({ error: "Interview not found" }); return; }
+  if (session.status === "completed") {
+    res.status(409).json({ error: "This interview is already completed" }); return;
+  }
 
   const [question] = await db.select().from(questionsTable)
-    .where(eq(questionsTable.id, body.data.questionId));
+    .where(and(
+      eq(questionsTable.id, body.data.questionId),
+      eq(questionsTable.category, session.category),
+      eq(questionsTable.difficulty, session.difficulty),
+    ));
   if (!question) { res.status(404).json({ error: "Question not found" }); return; }
+
+  const [existingAnswer] = await db.select({ id: interviewAnswersTable.id })
+    .from(interviewAnswersTable)
+    .where(and(
+      eq(interviewAnswersTable.interviewId, params.data.id),
+      eq(interviewAnswersTable.questionId, body.data.questionId),
+    ))
+    .limit(1);
+  if (existingAnswer) {
+    res.status(409).json({ error: "This question has already been answered" }); return;
+  }
 
   const [latestResume] = await db.select().from(resumesTable)
     .where(eq(resumesTable.userId, userId))
@@ -160,10 +178,11 @@ Return this exact JSON format:
   const avgComm = allAnswers.reduce((s, a) => s + a.communicationScore, 0) / allAnswers.length;
   const avgConf = allAnswers.reduce((s, a) => s + a.confidenceScore, 0) / allAnswers.length;
 
+  const isComplete = allAnswers.length >= Math.max(1, session.questionsAsked);
   await db.update(interviewSessionsTable).set({
     answersGiven: allAnswers.length,
     technicalScore: avgTech, communicationScore: avgComm, confidenceScore: avgConf,
-    status: "active",
+    status: isComplete ? "completed" : "active",
   }).where(eq(interviewSessionsTable.id, params.data.id));
 
   await db.insert(activityLogTable).values({

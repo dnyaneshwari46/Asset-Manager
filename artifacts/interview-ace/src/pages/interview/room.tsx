@@ -139,6 +139,16 @@ export default function InterviewRoom() {
   }, [questions]);
 
   useEffect(() => {
+    setCurrentQuestionIdx(0);
+    setQuestionSequence([]);
+    setAnsweredQuestionIds([]);
+    setTranscript("");
+    setEvaluation(null);
+    lastAnswerRef.current = "";
+    lastSpokenQuestionRef.current = "";
+  }, [interviewId]);
+
+  useEffect(() => {
     if (!questionBank.length || questionSequence.length) return;
     const serverAnsweredIds = interview?.answeredQuestionIds || [];
     const firstQuestion = chooseNextQuestion(questionBank, [], serverAnsweredIds, undefined, "", 0);
@@ -283,11 +293,13 @@ export default function InterviewRoom() {
         speakQuestion(`Okay, I've noted your answer. ${res.feedback.substring(0, 100)}... Let's move on when you're ready.`);
       },
       onError: (error) => {
-        if ((error as { status?: number }).status === 409 && currentQuestion) {
-          const updatedAnsweredIds = answeredQuestionIds.includes(currentQuestion.id)
-            ? answeredQuestionIds
-            : [...answeredQuestionIds, currentQuestion.id];
+        const status = (error as { status?: number }).status;
+        if ((status === 404 || status === 409) && currentQuestion) {
+          const updatedAnsweredIds = status === 409 && !answeredQuestionIds.includes(currentQuestion.id)
+            ? [...answeredQuestionIds, currentQuestion.id]
+            : answeredQuestionIds;
           setAnsweredQuestionIds(updatedAnsweredIds);
+          submitAnswer.reset();
           moveToNextQuestion(updatedAnsweredIds);
         }
       },

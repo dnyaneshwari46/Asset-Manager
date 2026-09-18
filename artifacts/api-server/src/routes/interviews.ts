@@ -34,6 +34,58 @@ const ROLE_GUIDANCE: Record<string, string> = {
   hr: "Introduction, project ownership, teamwork, conflict, strengths, learning, motivation, career goals, and clear STAR-style storytelling.",
 };
 
+function clampScore(value: unknown, fallback: number) {
+  const score = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.max(0, Math.min(100, score));
+}
+
+function createFallbackEvaluation(question: typeof questionsTable.$inferSelect, answer: string) {
+  const cleanAnswer = answer.trim();
+  const words = cleanAnswer.split(/\s+/).filter(Boolean);
+  const lowerAnswer = cleanAnswer.toLowerCase();
+  const refusal = /^(sorry|i don't know|i do not know|not sure|can't answer|cannot answer|no idea|i will tell you later)/i.test(cleanAnswer)
+    || lowerAnswer.includes("not prepared")
+    || lowerAnswer.includes("not prepare");
+  const questionTopics = (question.tags || [])
+    .filter((tag) => !["technical", "scenario", "behavioral", "project", "reasoning"].includes(tag))
+    .slice(0, 4)
+    .join(", ");
+  const topicText = questionTopics || question.category;
+
+  if (refusal || words.length < 8) {
+    return {
+      technicalScore: 10,
+      communicationScore: words.length < 4 ? 15 : 25,
+      confidenceScore: 15,
+      correctAnswer: `A stronger answer should address ${topicText}. Start with the main idea, connect it to the question, and give one concrete example or trade-off.`,
+      feedback: `This response did not answer the question about ${topicText}. Saying that you are not prepared gives the interviewer no evidence of your understanding. A better response would state what you know, explain your approach, and be honest about the part you would verify.`,
+      improvements: [
+        `Review ${topicText} before the next attempt`,
+        "Use a simple definition followed by a project example",
+        "If unsure, explain your reasoning instead of stopping at “I don't know”",
+      ],
+    };
+  }
+
+  const answerTokens = new Set(lowerAnswer.split(/[^a-z0-9+#.]+/).filter((token) => token.length > 2));
+  const topicMatches = (question.tags || []).filter((tag) => answerTokens.has(tag.toLowerCase())).length;
+  const detailBonus = words.length >= 35 ? 15 : words.length >= 18 ? 8 : 0;
+  const relevanceBonus = Math.min(30, topicMatches * 10);
+  const technicalScore = Math.min(75, 25 + detailBonus + relevanceBonus);
+  return {
+    technicalScore,
+    communicationScore: Math.min(78, words.length >= 18 ? 58 + Math.min(20, Math.floor(words.length / 10)) : 42),
+    confidenceScore: Math.min(72, words.length >= 18 ? 55 : 38),
+    correctAnswer: `A strong answer should cover ${topicText}, explain the decision or process clearly, and connect it to a practical example.`,
+    feedback: `The evaluator was unavailable, so this answer received a conservative review. Your response had enough detail to continue, but it should connect more directly to ${topicText} and include the reasoning behind your approach.`,
+    improvements: [
+      `Use the key terms related to ${topicText}`,
+      "Explain why you would choose that approach",
+      "Add one concrete example, result, or trade-off",
+    ],
+  };
+}
+
 function serializeSession(s: typeof interviewSessionsTable.$inferSelect) {
   return {
     id: s.id, userId: s.userId, category: s.category, difficulty: s.difficulty,
@@ -213,17 +265,25 @@ Return this exact JSON format:
 }`;
 
   const aiText = await geminiPrompt(prompt);
-  const evaluation = aiText ? parseGeminiJson<{
+  const parsedEvaluation = aiText ? parseGeminiJson<{
     technicalScore: number; communicationScore: number; confidenceScore: number;
     correctAnswer: string; feedback: string; improvements: string[];
   }>(aiText) : null;
+  const evaluation = parsedEvaluation
+    && typeof parsedEvaluation.correctAnswer === "string"
+    && typeof parsedEvaluation.feedback === "string"
+    && Array.isArray(parsedEvaluation.improvements)
+    ? {
+      technicalScore: clampScore(parsedEvaluation.technicalScore, 50),
+      communicationScore: clampScore(parsedEvaluation.communicationScore, 50),
+      confidenceScore: clampScore(parsedEvaluation.confidenceScore, 50),
+      correctAnswer: parsedEvaluation.correctAnswer,
+      feedback: parsedEvaluation.feedback,
+      improvements: parsedEvaluation.improvements.filter((item): item is string => typeof item === "string").slice(0, 4),
+    }
+    : null;
 
-  const eval_ = evaluation ?? {
-    technicalScore: 60, communicationScore: 65, confidenceScore: 60,
-    correctAnswer: question.sampleAnswer ?? "A comprehensive answer addressing all aspects of the question.",
-    feedback: "Your answer shows understanding of the topic. Focus on providing more specific examples and quantifiable results.",
-    improvements: ["Use the STAR method (Situation, Task, Action, Result)", "Provide concrete examples", "Be more concise"],
-  };
+  const eval_ = evaluation ?? createFallbackEvaluation(question, body.data.answer);
 
   const [answer] = await db.insert(interviewAnswersTable).values({
     interviewId: params.data.id, questionId: body.data.questionId,

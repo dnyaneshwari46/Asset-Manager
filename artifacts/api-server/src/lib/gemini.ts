@@ -13,16 +13,17 @@ if (apiKey) {
 }
 
 /**
- * Run a prompt through Gemini Flash (free tier).
+ * Run a prompt through Gemini Flash.
  * Returns null if no API key is configured.
  */
 export async function geminiPrompt(prompt: string): Promise<string | null> {
   if (!genAI) return null;
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (e) {
+    console.error("Gemini evaluation failed:", e instanceof Error ? e.message : "unknown provider error");
     return null;
   }
 }

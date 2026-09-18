@@ -44,6 +44,31 @@ function serializeSession(s: typeof interviewSessionsTable.$inferSelect) {
   };
 }
 
+async function getAnsweredQuestionIds(interviewId: number) {
+  const rows = await db.select({ questionId: interviewAnswersTable.questionId })
+    .from(interviewAnswersTable)
+    .where(eq(interviewAnswersTable.interviewId, interviewId));
+  return rows.map((row) => row.questionId);
+}
+
+async function normalizeSession(session: typeof interviewSessionsTable.$inferSelect) {
+  const answeredQuestionIds = await getAnsweredQuestionIds(session.id);
+  const questionsAsked = Math.max(15, session.questionsAsked);
+  const status = answeredQuestionIds.length < questionsAsked && session.status === "completed"
+    ? "active"
+    : session.status;
+
+  if (questionsAsked !== session.questionsAsked || status !== session.status) {
+    const [updated] = await db.update(interviewSessionsTable)
+      .set({ questionsAsked, answersGiven: answeredQuestionIds.length, status })
+      .where(eq(interviewSessionsTable.id, session.id))
+      .returning();
+    return { session: updated, answeredQuestionIds };
+  }
+
+  return { session, answeredQuestionIds };
+}
+
 router.get("/interviews", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
   const userId = req.dbUser!.id;
   const rows = await db.select().from(interviewSessionsTable)
@@ -78,7 +103,11 @@ router.get("/interviews/:id", requireAuth, resolveDbUser, async (req, res): Prom
   const [session] = await db.select().from(interviewSessionsTable)
     .where(and(eq(interviewSessionsTable.id, params.data.id), eq(interviewSessionsTable.userId, userId)));
   if (!session) { res.status(404).json({ error: "Interview not found" }); return; }
-  res.json(GetInterviewResponse.parse(serializeSession(session)));
+  const normalized = await normalizeSession(session);
+  res.json(GetInterviewResponse.parse({
+    ...serializeSession(normalized.session),
+    answeredQuestionIds: normalized.answeredQuestionIds,
+  }));
 });
 
 router.delete("/interviews/:id", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
@@ -101,15 +130,16 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
   const [session] = await db.select().from(interviewSessionsTable)
     .where(and(eq(interviewSessionsTable.id, params.data.id), eq(interviewSessionsTable.userId, userId)));
   if (!session) { res.status(404).json({ error: "Interview not found" }); return; }
-  if (session.status === "completed") {
+  const normalized = await normalizeSession(session);
+  if (normalized.session.status === "completed") {
     res.status(409).json({ error: "This interview is already completed" }); return;
   }
 
   const [question] = await db.select().from(questionsTable)
     .where(and(
       eq(questionsTable.id, body.data.questionId),
-      eq(questionsTable.category, session.category),
-      eq(questionsTable.difficulty, session.difficulty),
+      eq(questionsTable.category, normalized.session.category),
+      eq(questionsTable.difficulty, normalized.session.difficulty),
     ));
   if (!question) { res.status(404).json({ error: "Question not found" }); return; }
 
@@ -135,8 +165,8 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     experience: resumeContent.experience,
     summary: resumeContent.summary,
   }).slice(0, 6000);
-  const jobRole = ROLE_LABELS[session.category] ?? session.category;
-  const roleGuidance = ROLE_GUIDANCE[session.category] ?? "Use practical role-specific concepts, project explanations, debugging, and communication scenarios.";
+  const jobRole = ROLE_LABELS[normalized.session.category] ?? normalized.session.category;
+  const roleGuidance = ROLE_GUIDANCE[normalized.session.category] ?? "Use practical role-specific concepts, project explanations, debugging, and communication scenarios.";
   const priorAnswers = await db.select().from(interviewAnswersTable)
     .where(eq(interviewAnswersTable.interviewId, params.data.id));
   const priorQuestionIds = priorAnswers.map((item) => item.questionId);
@@ -153,11 +183,13 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     .slice(0, 7000) || "No previous answers. This is the first response.";
 
   // AI evaluation via Gemini
-  const prompt = `You are a supportive senior interviewer for the ${jobRole} role.
-Use a practical mock-interview style inspired by The Kiran Academy's public interview preparation material: begin with clear role fundamentals, move into hands-on or project reasoning, then use HR and communication scenarios. Their public programme emphasizes diagnosing gaps, targeting the next gap, and asking follow-ups that expose whether a candidate understands their own project.
+  const prompt = `You are a supportive senior interviewer conducting a realistic ${jobRole} interview.
+Use a practical mock-interview style inspired by public interview preparation patterns: begin with role fundamentals, move into hands-on or project reasoning, then use realistic workplace and communication scenarios. Diagnose the candidate's current gap and make the next focus useful instead of repeating a generic question.
 Role guidance: ${roleGuidance}
 The interview plan has 15 questions total: 5 technical, 5 scenario-based, and 5 behavioral questions.
-Evaluate the current answer in context of the previous questions and answers. Do not demand exact textbook wording, memorized numeric values, or a single "hardcore" answer. Give partial credit for correct reasoning, a sensible approach, and honest project experience. If the answer is weak, explain the missing idea in simple terms.
+Evaluate the current answer in context of the previous questions and answers. Give partial credit for correct reasoning, a sensible approach, and honest project experience. Do not demand exact textbook wording or memorized numeric values.
+Your feedback must cite evidence from the candidate's actual answer. Distinguish what they got right from what is missing. Do not praise claims the candidate did not make. For a short or unclear answer, say exactly what detail would make it interview-ready.
+Write feedback like a real interviewer: one specific strength, one important gap, and one concrete next action. The ideal answer should be a concise checklist of concepts and an example, not a copied textbook paragraph.
 Do not repeat a question or restart from generic fundamentals. The next interviewer focus should naturally follow the candidate's current answer, claimed experience, or the gap you identify.
 Candidate resume context: ${resumeContext}
 Conversation so far:
@@ -176,8 +208,8 @@ Return this exact JSON format:
   "communicationScore": <0-100>,
   "confidenceScore": <0-100>,
   "correctAnswer": "A clear, complete ideal answer",
-  "feedback": "Constructive paragraph feedback",
-  "improvements": ["specific improvement 1", "specific improvement 2", "specific improvement 3"]
+  "feedback": "Specific evidence-based feedback: one strength, one gap, and one next action",
+  "improvements": ["specific improvement based on this answer", "specific improvement based on this role", "specific practice prompt"]
 }`;
 
   const aiText = await geminiPrompt(prompt);
@@ -206,7 +238,7 @@ Return this exact JSON format:
   const avgComm = allAnswers.reduce((s, a) => s + a.communicationScore, 0) / allAnswers.length;
   const avgConf = allAnswers.reduce((s, a) => s + a.confidenceScore, 0) / allAnswers.length;
 
-  const isComplete = allAnswers.length >= Math.max(1, session.questionsAsked);
+  const isComplete = allAnswers.length >= Math.max(15, normalized.session.questionsAsked);
   await db.update(interviewSessionsTable).set({
     answersGiven: allAnswers.length,
     technicalScore: avgTech, communicationScore: avgComm, confidenceScore: avgConf,
@@ -215,7 +247,7 @@ Return this exact JSON format:
 
   await db.insert(activityLogTable).values({
     userId, type: "interview", title: "Answer Submitted",
-    description: `${session.category} interview answer evaluated`, score: eval_.technicalScore,
+    description: `${normalized.session.category} interview answer evaluated`, score: eval_.technicalScore,
   });
 
   res.status(201).json(SubmitAnswerResponse.parse({

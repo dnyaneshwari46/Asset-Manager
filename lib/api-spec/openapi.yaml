@@ -667,6 +667,10 @@ components:
           type: integer
         answersGiven:
           type: integer
+        answeredQuestionIds:
+          type: array
+          items:
+            type: integer
         createdAt:
           type: string
 

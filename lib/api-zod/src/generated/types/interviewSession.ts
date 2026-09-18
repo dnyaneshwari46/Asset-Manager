@@ -20,5 +20,6 @@ export interface InterviewSession {
   confidenceScore: number | null;
   questionsAsked: number;
   answersGiven: number;
+  answeredQuestionIds?: number[];
   createdAt: string;
 }

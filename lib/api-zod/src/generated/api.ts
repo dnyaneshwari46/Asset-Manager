@@ -205,6 +205,7 @@ export const ListInterviewsResponseItem = zod.object({
   "confidenceScore": zod.number().nullable(),
   "questionsAsked": zod.number(),
   "answersGiven": zod.number(),
+  "answeredQuestionIds": zod.array(zod.number()).optional(),
   "createdAt": zod.string()
 })
 export const ListInterviewsResponse = zod.array(ListInterviewsResponseItem)
@@ -229,6 +230,7 @@ export const CreateInterviewResponse = zod.object({
   "confidenceScore": zod.number().nullable(),
   "questionsAsked": zod.number(),
   "answersGiven": zod.number(),
+  "answeredQuestionIds": zod.array(zod.number()).optional(),
   "createdAt": zod.string()
 })
 
@@ -251,6 +253,7 @@ export const GetInterviewResponse = zod.object({
   "confidenceScore": zod.number().nullable(),
   "questionsAsked": zod.number(),
   "answersGiven": zod.number(),
+  "answeredQuestionIds": zod.array(zod.number()).optional(),
   "createdAt": zod.string()
 })
 

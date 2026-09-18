@@ -36,6 +36,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 function questionKind(question: InterviewQuestion): QuestionKind {
   const haystack = `${question.type} ${(question.tags || []).join(" ")} ${question.text}`.toLowerCase();
+  if (question.type.toLowerCase() === "scenario") return "scenario";
+  if (question.type.toLowerCase() === "behavioral" || question.type.toLowerCase() === "hr") return "behavioral";
   if (
     haystack.includes("behavior") ||
     haystack.includes("hr") ||
@@ -70,12 +72,14 @@ function tokens(value: string) {
 function chooseNextQuestion(
   bank: InterviewQuestion[],
   asked: InterviewQuestion[],
+  answeredQuestionIds: number[],
   previousQuestion: InterviewQuestion | undefined,
   previousAnswer: string,
   questionNumber: number,
 ) {
   const askedIds = new Set(asked.map((question) => question.id));
-  const candidates = bank.filter((question) => !askedIds.has(question.id));
+  const answeredIds = new Set(answeredQuestionIds);
+  const candidates = bank.filter((question) => !askedIds.has(question.id) && !answeredIds.has(question.id));
   if (!candidates.length) return undefined;
 
   const targetKind = QUESTION_PLAN[questionNumber] || "behavioral";
@@ -111,6 +115,7 @@ export default function InterviewRoom() {
 
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [questionSequence, setQuestionSequence] = useState<InterviewQuestion[]>([]);
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<number[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -135,9 +140,11 @@ export default function InterviewRoom() {
 
   useEffect(() => {
     if (!questionBank.length || questionSequence.length) return;
-    const firstQuestion = chooseNextQuestion(questionBank, [], undefined, "", 0);
+    const serverAnsweredIds = interview?.answeredQuestionIds || [];
+    const firstQuestion = chooseNextQuestion(questionBank, [], serverAnsweredIds, undefined, "", 0);
     if (firstQuestion) setQuestionSequence([firstQuestion]);
-  }, [questionBank, questionSequence.length]);
+    if (serverAnsweredIds.length) setAnsweredQuestionIds(serverAnsweredIds);
+  }, [questionBank, questionSequence.length, interview?.answeredQuestionIds]);
 
   const currentQuestion = questionSequence[currentQuestionIdx];
 
@@ -235,30 +242,11 @@ export default function InterviewRoom() {
     }
   };
 
-  const handleSubmit = (event?: React.FormEvent) => {
-    event?.preventDefault();
-    if (!isInterviewStarted || !transcript.trim() || !currentQuestion || submitAnswer.isPending) return;
-    
-    stopListening();
-    lastAnswerRef.current = transcript.trim();
-    
-    submitAnswer.mutate({ 
-      id: interviewId, 
-      data: { questionId: currentQuestion.id, answer: transcript.trim() }
-    }, {
-      onSuccess: (res) => {
-        setTranscript("");
-        setEvaluation(res);
-        // AI reads brief feedback
-        speakQuestion(`Okay, I've noted your answer. ${res.feedback.substring(0, 100)}... Let's move on when you're ready.`);
-      }
-    });
-  };
-
-  const handleNext = () => {
+  const moveToNextQuestion = (extraAnsweredQuestionIds: number[] = answeredQuestionIds) => {
     const nextQuestion = chooseNextQuestion(
       questionBank,
       questionSequence,
+      extraAnsweredQuestionIds,
       currentQuestion,
       lastAnswerRef.current,
       currentQuestionIdx + 1,
@@ -268,10 +256,46 @@ export default function InterviewRoom() {
     lastAnswerRef.current = "";
     if (nextQuestion && currentQuestionIdx < QUESTION_PLAN.length - 1) {
       setQuestionSequence((previous) => [...previous, nextQuestion]);
-      setCurrentQuestionIdx(prev => prev + 1);
+      setCurrentQuestionIdx((previous) => previous + 1);
     } else {
-      setLocation('/interview'); // Done
+      setLocation("/interview");
     }
+  };
+
+  const handleSubmit = (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!isInterviewStarted || !transcript.trim() || !currentQuestion || submitAnswer.isPending) return;
+    
+    stopListening();
+    lastAnswerRef.current = transcript.trim();
+    
+    submitAnswer.mutate({
+      id: interviewId, 
+      data: { questionId: currentQuestion.id, answer: transcript.trim() }
+    }, {
+      onSuccess: (res) => {
+        setTranscript("");
+        setEvaluation(res);
+        setAnsweredQuestionIds((previous) => previous.includes(currentQuestion.id)
+          ? previous
+          : [...previous, currentQuestion.id]);
+        // AI reads brief feedback
+        speakQuestion(`Okay, I've noted your answer. ${res.feedback.substring(0, 100)}... Let's move on when you're ready.`);
+      },
+      onError: (error) => {
+        if ((error as { status?: number }).status === 409 && currentQuestion) {
+          const updatedAnsweredIds = answeredQuestionIds.includes(currentQuestion.id)
+            ? answeredQuestionIds
+            : [...answeredQuestionIds, currentQuestion.id];
+          setAnsweredQuestionIds(updatedAnsweredIds);
+          moveToNextQuestion(updatedAnsweredIds);
+        }
+      },
+    });
+  };
+
+  const handleNext = () => {
+    moveToNextQuestion();
   };
 
   const requestScreenShare = async () => {
@@ -451,7 +475,10 @@ export default function InterviewRoom() {
               >
                 <div className="flex items-center gap-3 mb-6 pb-6 border-b border-white/10">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                  <h3 className="text-2xl font-bold text-white">Answer Evaluated</h3>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">Interviewer feedback</h3>
+                    <p className="text-sm text-gray-400 mt-1">Specific notes on this answer before we continue.</p>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-6 mb-8">
@@ -461,14 +488,20 @@ export default function InterviewRoom() {
                 </div>
 
                 <div className="space-y-6">
-                  <div>
-                    <h4 className="text-sm uppercase tracking-wider text-gray-400 font-semibold mb-2">AI Feedback</h4>
-                    <p className="text-gray-200 leading-relaxed bg-white/5 p-4 rounded-xl border border-white/10">{evaluation.feedback}</p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
+                      <h4 className="text-sm uppercase tracking-wider text-emerald-300 font-semibold mb-2">What I heard</h4>
+                      <p className="text-gray-200 leading-relaxed">{evaluation.feedback}</p>
+                    </div>
+                    <div className="rounded-2xl border border-violet-400/15 bg-violet-400/5 p-4">
+                      <h4 className="text-sm uppercase tracking-wider text-violet-300 font-semibold mb-2">What a strong answer covers</h4>
+                      <p className="text-gray-200 leading-relaxed">{evaluation.correctAnswer}</p>
+                    </div>
                   </div>
                   
                   {evaluation.improvements && evaluation.improvements.length > 0 && (
                     <div>
-                      <h4 className="text-sm uppercase tracking-wider text-amber-500/80 font-semibold mb-2">Areas for Improvement</h4>
+                      <h4 className="text-sm uppercase tracking-wider text-amber-300 font-semibold mb-2">Your next improvement</h4>
                       <ul className="list-disc pl-5 space-y-1 text-gray-300">
                         {evaluation.improvements.map((imp: string, i: number) => <li key={i}>{imp}</li>)}
                       </ul>

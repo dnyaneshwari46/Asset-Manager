@@ -8,8 +8,31 @@ import {
   SubmitAnswerParams, SubmitAnswerBody, SubmitAnswerResponse,
 } from "@workspace/api-zod";
 import { geminiPrompt, parseGeminiJson } from "../lib/gemini";
+import { ensureRoleQuestions } from "../lib/role-question-bank";
 
 const router: IRouter = Router();
+
+const ROLE_LABELS: Record<string, string> = {
+  java: "Java Developer",
+  python: "Python Developer",
+  mern: "Frontend / React Developer",
+  fullstack: "Backend / Full Stack Engineer",
+  data_analyst: "Data Analyst",
+  data_science: "Data Scientist",
+  ai_ml: "AI / ML Engineer",
+  hr: "Behavioral / HR",
+};
+
+const ROLE_GUIDANCE: Record<string, string> = {
+  java: "Core Java and fresher-friendly Spring/Hibernate themes: OOP, collections, exceptions, strings, Java 8+, JVM and memory, threading, REST, and practical project decisions.",
+  python: "Practical Python themes: data structures, functions, OOP, exceptions, decorators, generators, testing, APIs, Django or Flask, and explainable project decisions.",
+  mern: "JavaScript, React, HTML/CSS, browser behavior, API integration, state management, testing, accessibility, and practical debugging or project trade-offs.",
+  fullstack: "REST APIs, authentication, databases and SQL, backend design, frontend/backend integration, testing, deployment, and practical debugging scenarios.",
+  data_analyst: "SQL, data cleaning, spreadsheet or Power BI thinking, metrics, dashboards, communicating insights, and realistic business scenarios.",
+  data_science: "Python, statistics, data preparation, feature engineering, model evaluation, experiment design, SQL, and communicating model results.",
+  ai_ml: "Python, ML fundamentals, data preparation, evaluation, model trade-offs, deployment, monitoring, and responsible AI scenarios.",
+  hr: "Introduction, project ownership, teamwork, conflict, strengths, learning, motivation, career goals, and clear STAR-style storytelling.",
+};
 
 function serializeSession(s: typeof interviewSessionsTable.$inferSelect) {
   return {
@@ -32,12 +55,9 @@ router.post("/interviews", requireAuth, resolveDbUser, async (req, res): Promise
   const parsed = CreateInterviewBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const userId = req.dbUser!.id;
+  const questions = await ensureRoleQuestions(parsed.data.category, parsed.data.difficulty);
 
   // Count questions for this category/difficulty
-  const questions = await db.select({ id: questionsTable.id })
-    .from(questionsTable)
-    .where(and(eq(questionsTable.category, parsed.data.category), eq(questionsTable.difficulty, parsed.data.difficulty)));
-
   const [session] = await db.insert(interviewSessionsTable).values({
     userId, category: parsed.data.category, difficulty: parsed.data.difficulty,
     questionsAsked: Math.min(15, questions.length),
@@ -115,30 +135,38 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     experience: resumeContent.experience,
     summary: resumeContent.summary,
   }).slice(0, 6000);
-  const roleLabels: Record<string, string> = {
-    java: "Java Developer",
-    python: "Python Developer",
-    mern: "Frontend / React Developer",
-    fullstack: "Backend / Full Stack Engineer",
-    data_analyst: "Data Analyst",
-    data_science: "Data Scientist",
-    ai_ml: "AI / ML Engineer",
-    hr: "HR / Behavioral",
-  };
-  const jobRole = roleLabels[session.category] ?? session.category;
+  const jobRole = ROLE_LABELS[session.category] ?? session.category;
+  const roleGuidance = ROLE_GUIDANCE[session.category] ?? "Use practical role-specific concepts, project explanations, debugging, and communication scenarios.";
+  const priorAnswers = await db.select().from(interviewAnswersTable)
+    .where(eq(interviewAnswersTable.interviewId, params.data.id));
+  const priorQuestionIds = priorAnswers.map((item) => item.questionId);
+  const priorQuestions = priorQuestionIds.length
+    ? await db.select({ id: questionsTable.id, text: questionsTable.text })
+      .from(questionsTable)
+      .where(inArray(questionsTable.id, priorQuestionIds))
+    : [];
+  const priorQuestionText = new Map(priorQuestions.map((item) => [item.id, item.text]));
+  const conversationContext = priorAnswers
+    .slice(-5)
+    .map((item, index) => `Previous ${index + 1}: Question: ${priorQuestionText.get(item.questionId) ?? "Role question"} | Answer: ${item.answer}`)
+    .join("\n")
+    .slice(0, 7000) || "No previous answers. This is the first response.";
 
   // AI evaluation via Gemini
-  const prompt = `You are a senior technical interviewer for the ${jobRole} role at a top tech company (Google/Amazon/Meta level).
-Ask questions and evaluate answers strictly in the context of ${jobRole}.
+  const prompt = `You are a supportive senior interviewer for the ${jobRole} role.
+Use a practical mock-interview style inspired by The Kiran Academy's public interview preparation material: begin with clear role fundamentals, move into hands-on or project reasoning, then use HR and communication scenarios. Their public programme emphasizes diagnosing gaps, targeting the next gap, and asking follow-ups that expose whether a candidate understands their own project.
+Role guidance: ${roleGuidance}
 The interview plan has 15 questions total: 5 technical, 5 scenario-based, and 5 behavioral questions.
-Do not repeat questions. Ask one question at a time and wait for the candidate's answer.
-Use the candidate's resume context to make follow-ups relevant. If the resume shows Java, ask Java questions. If the role is Frontend, focus on React, JavaScript, and CSS.
+Evaluate the current answer in context of the previous questions and answers. Do not demand exact textbook wording, memorized numeric values, or a single "hardcore" answer. Give partial credit for correct reasoning, a sensible approach, and honest project experience. If the answer is weak, explain the missing idea in simple terms.
+Do not repeat a question or restart from generic fundamentals. The next interviewer focus should naturally follow the candidate's current answer, claimed experience, or the gap you identify.
+Candidate resume context: ${resumeContext}
+Conversation so far:
+${conversationContext}
 Evaluate this interview answer and return ONLY valid JSON (no markdown).
 
 Question: ${question.text}
 Category: ${question.category}
 Difficulty: ${question.difficulty}
-Candidate resume context: ${resumeContext}
 Candidate's Answer: ${body.data.answer}
 Sample Answer (reference only): ${question.sampleAnswer ?? "N/A"}
 

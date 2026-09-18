@@ -5,6 +5,99 @@ import { Loader2, Mic, SquareSquare, MonitorUp, Send, CheckCircle2, ChevronRight
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
+type InterviewQuestion = {
+  id: number;
+  category: string;
+  difficulty: string;
+  text: string;
+  type: string;
+  sampleAnswer?: string | null;
+  tags?: string[];
+};
+
+type QuestionKind = "technical" | "scenario" | "behavioral";
+
+const QUESTION_PLAN: QuestionKind[] = [
+  ...Array<QuestionKind>(5).fill("technical"),
+  ...Array<QuestionKind>(5).fill("scenario"),
+  ...Array<QuestionKind>(5).fill("behavioral"),
+];
+
+const ROLE_LABELS: Record<string, string> = {
+  java: "Java Developer",
+  python: "Python Developer",
+  mern: "Frontend / React Developer",
+  fullstack: "Backend / Full Stack Engineer",
+  data_analyst: "Data Analyst",
+  data_science: "Data Scientist",
+  ai_ml: "AI / ML Engineer",
+  hr: "Behavioral / HR",
+};
+
+function questionKind(question: InterviewQuestion): QuestionKind {
+  const haystack = `${question.type} ${(question.tags || []).join(" ")} ${question.text}`.toLowerCase();
+  if (
+    haystack.includes("behavior") ||
+    haystack.includes("hr") ||
+    haystack.includes("tell me about") ||
+    haystack.includes("strength") ||
+    haystack.includes("team")
+  ) {
+    return "behavioral";
+  }
+  if (
+    haystack.includes("scenario") ||
+    haystack.includes("situat") ||
+    haystack.includes("suppose") ||
+    haystack.includes("what would you do") ||
+    haystack.includes("how would you handle")
+  ) {
+    return "scenario";
+  }
+  return "technical";
+}
+
+function tokens(value: string) {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9+#.]+/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length > 2),
+  );
+}
+
+function chooseNextQuestion(
+  bank: InterviewQuestion[],
+  asked: InterviewQuestion[],
+  previousQuestion: InterviewQuestion | undefined,
+  previousAnswer: string,
+  questionNumber: number,
+) {
+  const askedIds = new Set(asked.map((question) => question.id));
+  const candidates = bank.filter((question) => !askedIds.has(question.id));
+  if (!candidates.length) return undefined;
+
+  const targetKind = QUESTION_PLAN[questionNumber] || "behavioral";
+  const answerTokens = tokens(previousAnswer);
+  const previousTokens = tokens(previousQuestion?.text || "");
+  const targetCandidates = candidates.filter((question) => questionKind(question) === targetKind);
+  const pool = targetCandidates.length ? targetCandidates : candidates;
+
+  return [...pool].sort((a, b) => {
+    const score = (question: InterviewQuestion) => {
+      const questionTokens = tokens(`${question.text} ${(question.tags || []).join(" ")}`);
+      let relevance = questionKind(question) === targetKind ? 8 : 0;
+      questionTokens.forEach((token) => {
+        if (answerTokens.has(token)) relevance += 4;
+        if (previousTokens.has(token)) relevance += 1;
+      });
+      return relevance;
+    };
+    return score(b) - score(a);
+  })[0];
+}
+
 export default function InterviewRoom() {
   const { id } = useParams();
   const interviewId = parseInt(id || "0", 10);
@@ -17,27 +110,36 @@ export default function InterviewRoom() {
   const [, setLocation] = useLocation();
 
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [questionSequence, setQuestionSequence] = useState<InterviewQuestion[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [evaluation, setEvaluation] = useState<any>(null);
+  const [isInterviewStarted, setIsInterviewStarted] = useState(false);
+  const [screenShareStatus, setScreenShareStatus] = useState<"idle" | "shared" | "declined">("idle");
+  const [screenShareError, setScreenShareError] = useState("");
   
   const recognitionRef = useRef<any>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastSpokenQuestionRef = useRef("");
+  const lastAnswerRef = useRef("");
   const [keyboardOffset, setKeyboardOffset] = useState(0);
 
-  const interviewQuestions = useMemo(() => {
+  const questionBank = useMemo<InterviewQuestion[]>(() => {
     if (!questions?.length) return [];
     const unique = Array.from(new Map(questions.map((question) => [question.text.trim(), question])).values());
-    const preferredOrder = ["technical", "scenario", "behavioral", "hr"];
-    const selected = preferredOrder.flatMap((type) => unique.filter((question) => question.type.toLowerCase() === type).slice(0, 5));
-    return Array.from(new Map([...selected, ...unique].map((question) => [question.id, question])).values()).slice(0, 15);
+    return unique as InterviewQuestion[];
   }, [questions]);
 
-  const currentQuestion = interviewQuestions[currentQuestionIdx];
+  useEffect(() => {
+    if (!questionBank.length || questionSequence.length) return;
+    const firstQuestion = chooseNextQuestion(questionBank, [], undefined, "", 0);
+    if (firstQuestion) setQuestionSequence([firstQuestion]);
+  }, [questionBank, questionSequence.length]);
+
+  const currentQuestion = questionSequence[currentQuestionIdx];
 
   const speakQuestion = (text: string) => {
     const questionKey = text.trim().slice(0, 10).toLowerCase();
@@ -60,8 +162,6 @@ export default function InterviewRoom() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Speak each question once. Keeping the dependency on the index prevents
-  // every transcript/evaluation render from starting the same utterance again.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return undefined;
@@ -78,13 +178,15 @@ export default function InterviewRoom() {
     };
   }, []);
 
+  // Speak each question once. Keeping the dependency on the index prevents
+  // every transcript/evaluation render from starting the same utterance again.
   useEffect(() => {
-    if (currentQuestion && !evaluation) {
+    if (currentQuestion && !evaluation && isInterviewStarted) {
       const t = setTimeout(() => speakQuestion(currentQuestion.text), 1000);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [currentQuestionIdx, currentQuestion?.id, evaluation]);
+  }, [currentQuestionIdx, currentQuestion?.id, evaluation, isInterviewStarted]);
 
   useEffect(() => () => {
     window.speechSynthesis.cancel();
@@ -135,13 +237,14 @@ export default function InterviewRoom() {
 
   const handleSubmit = (event?: React.FormEvent) => {
     event?.preventDefault();
-    if (!transcript.trim() || !currentQuestion || submitAnswer.isPending) return;
+    if (!isInterviewStarted || !transcript.trim() || !currentQuestion || submitAnswer.isPending) return;
     
     stopListening();
+    lastAnswerRef.current = transcript.trim();
     
     submitAnswer.mutate({ 
       id: interviewId, 
-      data: { questionId: currentQuestion.id, answer: transcript } 
+      data: { questionId: currentQuestion.id, answer: transcript.trim() }
     }, {
       onSuccess: (res) => {
         setTranscript("");
@@ -153,24 +256,47 @@ export default function InterviewRoom() {
   };
 
   const handleNext = () => {
+    const nextQuestion = chooseNextQuestion(
+      questionBank,
+      questionSequence,
+      currentQuestion,
+      lastAnswerRef.current,
+      currentQuestionIdx + 1,
+    );
     setEvaluation(null);
     setTranscript("");
-    if (currentQuestionIdx < interviewQuestions.length - 1) {
+    lastAnswerRef.current = "";
+    if (nextQuestion && currentQuestionIdx < QUESTION_PLAN.length - 1) {
+      setQuestionSequence((previous) => [...previous, nextQuestion]);
       setCurrentQuestionIdx(prev => prev + 1);
     } else {
       setLocation('/interview'); // Done
     }
   };
 
-  const startScreenShare = async () => {
+  const requestScreenShare = async () => {
+    setScreenShareError("");
     try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error("Screen sharing is not supported in this browser.");
+      }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       if (screenVideoRef.current) {
         screenVideoRef.current.srcObject = stream;
       }
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => setScreenShareStatus("declined"));
+      setScreenShareStatus("shared");
+      return true;
     } catch (err) {
-      console.error("Screen share failed", err);
+      setScreenShareStatus("declined");
+      setScreenShareError(err instanceof Error ? err.message : "Screen sharing was not enabled.");
+      return false;
     }
+  };
+
+  const startInterview = async (withScreenShare: boolean) => {
+    if (withScreenShare) await requestScreenShare();
+    setIsInterviewStarted(true);
   };
 
   if (isLoading || !interview || questionsLoading) {
@@ -191,12 +317,12 @@ export default function InterviewRoom() {
             <span className="font-medium text-gray-300">AI Interviewer</span>
           </div>
           <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-400">
-             Q {currentQuestionIdx + 1} of {interviewQuestions.length || "—"}
+             Q {currentQuestionIdx + 1} of {Math.min(QUESTION_PLAN.length, interview.questionsAsked || QUESTION_PLAN.length)}
           </div>
         </div>
         
         <div className="flex items-center gap-3">
-          <Button onClick={startScreenShare} variant="outline" size="sm" className="border-white/10 hover:bg-white/5 text-gray-300">
+          <Button onClick={() => void requestScreenShare()} variant="outline" size="sm" className="border-white/10 hover:bg-white/5 text-gray-300">
             <MonitorUp className="w-4 h-4 mr-2" />
             Share Screen
           </Button>
@@ -215,7 +341,35 @@ export default function InterviewRoom() {
 
         <div className="max-w-4xl w-full z-10 relative">
           <AnimatePresence mode="wait">
-            {!evaluation ? (
+            {!isInterviewStarted ? (
+              <motion.div
+                key="preflight"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass rounded-3xl p-8 md:p-12 max-w-2xl mx-auto text-center"
+              >
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-3xl flex items-center justify-center shadow-[0_0_40px_rgba(139,92,246,0.3)] mb-6">
+                  <MonitorUp className="w-9 h-9 text-white" />
+                </div>
+                <p className="text-sm uppercase tracking-[0.2em] text-violet-300">AI interviewer ready</p>
+                <h2 className="mt-3 text-3xl md:text-4xl font-semibold text-white">
+                  Let’s practice your {ROLE_LABELS[interview.category] || interview.category} interview
+                </h2>
+                <p className="mt-4 text-gray-400 leading-relaxed">
+                  I’ll ask practical, fresher-friendly questions inspired by real mock-interview patterns,
+                  follow up on what you say, and use screen sharing when you explain a project or code.
+                </p>
+                <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
+                  <Button onClick={() => void startInterview(true)} className="bg-violet-600 hover:bg-violet-700 h-12 px-6">
+                    <MonitorUp className="w-4 h-4 mr-2" /> Start with screen share
+                  </Button>
+                  <Button onClick={() => void startInterview(false)} variant="outline" className="border-white/15 text-gray-300 h-12 px-6">
+                    Continue without sharing
+                  </Button>
+                </div>
+                {screenShareError && <p className="mt-4 text-sm text-amber-300">{screenShareError} You can continue without sharing.</p>}
+              </motion.div>
+            ) : !evaluation ? (
               <motion.div 
                 key="question"
                 initial={{ opacity: 0, y: 20 }}
@@ -231,8 +385,17 @@ export default function InterviewRoom() {
                     )}
                   </div>
                   <h2 className="text-3xl md:text-5xl font-semibold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70">
-                    {currentQuestion?.text || "No questions are available for this role yet."}
+                     {currentQuestion?.text || "No questions are available for this role yet."}
                   </h2>
+                   <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-gray-400">
+                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                       {ROLE_LABELS[interview.category] || interview.category}
+                     </span>
+                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                       {currentQuestion ? `${questionKind(currentQuestion)} follow-up` : "Preparing question"}
+                     </span>
+                     {screenShareStatus === "shared" && <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-300">Screen shared</span>}
+                   </div>
                 </div>
 
                 <form ref={composerRef} onSubmit={handleSubmit} style={{ bottom: keyboardOffset }} className="fixed left-0 right-0 z-30 mx-auto max-w-2xl glass p-2 rounded-t-2xl md:static md:rounded-2xl flex items-center gap-2 border border-white/10 bg-[#0f0f1d]/95 backdrop-blur-xl md:bottom-auto">
@@ -254,12 +417,17 @@ export default function InterviewRoom() {
                   />
                   <Button 
                     type="submit"
-                    disabled={submitAnswer.isPending || !transcript.trim() || !currentQuestion}
+                     disabled={submitAnswer.isPending || !transcript.trim() || !currentQuestion}
                     className="bg-blue-600 hover:bg-blue-700 h-14 px-8 rounded-xl shadow-lg shadow-blue-500/20"
                   >
                     {submitAnswer.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </Button>
                 </form>
+                 {submitAnswer.isError && (
+                   <p className="mt-3 text-sm text-red-300">
+                     {submitAnswer.error instanceof Error ? submitAnswer.error.message : "Your answer could not be submitted. Please try again."}
+                   </p>
+                 )}
                 
                 {isRecording && (
                   <div className="mt-6 flex justify-center gap-1 h-8 items-end">
@@ -310,7 +478,7 @@ export default function InterviewRoom() {
 
                 <div className="mt-8 flex justify-end">
                   <Button onClick={handleNext} className="bg-white text-black hover:bg-gray-200 rounded-full px-8 h-12 text-lg">
-                    Next Question <ChevronRight className="w-5 h-5 ml-2" />
+                      {currentQuestionIdx === QUESTION_PLAN.length - 1 ? "Finish Interview" : "Next Question"} <ChevronRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>
               </motion.div>

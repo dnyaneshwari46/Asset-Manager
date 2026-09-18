@@ -3,12 +3,16 @@ import { eq, and, sql } from "drizzle-orm";
 import { db, questionsTable } from "@workspace/db";
 import { requireAuth, resolveDbUser } from "../lib/auth";
 import { ListQuestionsQueryParams, ListQuestionsResponse } from "@workspace/api-zod";
+import { ensureRoleQuestions } from "../lib/role-question-bank";
 
 const router: IRouter = Router();
 
 router.get("/questions", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
   const params = ListQuestionsQueryParams.safeParse(req.query);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (params.data.category && params.data.difficulty) {
+    await ensureRoleQuestions(params.data.category, params.data.difficulty);
+  }
 
   let query = db.select().from(questionsTable).$dynamic();
 

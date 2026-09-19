@@ -57,12 +57,12 @@ function createFallbackEvaluation(question: typeof questionsTable.$inferSelect, 
       technicalScore: 10,
       communicationScore: words.length < 4 ? 15 : 25,
       confidenceScore: 15,
-      correctAnswer: `A stronger answer should address ${topicText}. Start with the main idea, connect it to the question, and give one concrete example or trade-off.`,
-      feedback: `This response did not answer the question about ${topicText}. Saying that you are not prepared gives the interviewer no evidence of your understanding. A better response would state what you know, explain your approach, and be honest about the part you would verify.`,
+      correctAnswer: `You do not need a memorized script. Start with your main point about ${topicText}, then add one personal example and what you learned or would do next.`,
+      feedback: `I could not evaluate your understanding of ${topicText} from this answer because it was too short or you said you were unsure. That is okay—try the question again by explaining what you know, then be clear about the part you would verify.`,
       improvements: [
         `Review ${topicText} before the next attempt`,
-        "Use a simple definition followed by a project example",
-        "If unsure, explain your reasoning instead of stopping at “I don't know”",
+        "Answer in your own words instead of memorizing a fixed response",
+        "If unsure, explain your reasoning and what you would check",
       ],
     };
   }
@@ -72,15 +72,18 @@ function createFallbackEvaluation(question: typeof questionsTable.$inferSelect, 
   const detailBonus = words.length >= 35 ? 15 : words.length >= 18 ? 8 : 0;
   const relevanceBonus = Math.min(30, topicMatches * 10);
   const technicalScore = Math.min(75, 25 + detailBonus + relevanceBonus);
+  const isPartial = words.length < 18 || topicMatches === 0;
   return {
-    technicalScore,
+    technicalScore: isPartial ? Math.min(48, technicalScore) : technicalScore,
     communicationScore: Math.min(78, words.length >= 18 ? 58 + Math.min(20, Math.floor(words.length / 10)) : 42),
     confidenceScore: Math.min(72, words.length >= 18 ? 55 : 38),
-    correctAnswer: `A strong answer should cover ${topicText}, explain the decision or process clearly, and connect it to a practical example.`,
-    feedback: `The evaluator was unavailable, so this answer received a conservative review. Your response had enough detail to continue, but it should connect more directly to ${topicText} and include the reasoning behind your approach.`,
+    correctAnswer: `Keep the part of your answer that is useful, then add ${topicText}, your specific reasoning, and one concrete example or result. Use your own words; there is no required script.`,
+    feedback: isPartial
+      ? `You started an answer, but it was only partially developed. The missing part is a clear explanation of ${topicText} and how you would apply it. Add one example or trade-off so the interviewer can judge your understanding.`
+      : `Your answer had useful detail, but it should connect more directly to ${topicText} and explain the reasoning behind your approach. Add one concrete example, result, or trade-off.`,
     improvements: [
-      `Use the key terms related to ${topicText}`,
-      "Explain why you would choose that approach",
+      `Explain ${topicText} in your own words`,
+      "Say why you would choose that approach",
       "Add one concrete example, result, or trade-off",
     ],
   };
@@ -261,10 +264,10 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
   const prompt = `You are a supportive senior interviewer conducting a realistic ${jobRole} interview.
 Use a practical mock-interview style inspired by public interview preparation patterns: begin with role fundamentals, move into hands-on or project reasoning, then use realistic workplace and communication scenarios. Diagnose the candidate's current gap and make the next focus useful instead of repeating a generic question.
 Role guidance: ${roleGuidance}
-The interview plan has 15 questions total: 5 technical, 5 scenario-based, and 5 behavioral questions.
+ The interview plan has 15 questions total: an opening introduction, 5 technical questions, 5 scenario-based questions, and 4 additional behavioral questions.
 Evaluate the current answer in context of the previous questions and answers. Give partial credit for correct reasoning, a sensible approach, and honest project experience. Do not demand exact textbook wording or memorized numeric values.
 Your feedback must cite evidence from the candidate's actual answer. Distinguish what they got right from what is missing. Do not praise claims the candidate did not make. For a short or unclear answer, say exactly what detail would make it interview-ready.
-Write feedback like a real interviewer: one specific strength, one important gap, and one concrete next action. The ideal answer should be a concise checklist of concepts and an example, not a copied textbook paragraph.
+ Write feedback like a real interviewer: acknowledge the useful part, gently correct inaccurate or incomplete reasoning, explain the missing concept in plain language, and give one concrete next action. If the answer is partially correct, preserve what is correct before explaining the gap. Do not give a rigid memorized script; the ideal answer is a flexible checklist of concepts and an example, written in natural language.
 Do not repeat a question or restart from generic fundamentals. The next interviewer focus should naturally follow the candidate's current answer, claimed experience, or the gap you identify.
 Candidate resume context: ${resumeContext}
 Conversation so far:

@@ -129,16 +129,7 @@ function getResumeQuestionText(
   const extractedText = String(content.extractedText || "").trim();
 
   if (questionNumber === 0) {
-    if (projectName) {
-      return `Tell me about ${projectName} from your resume. What problem did it solve, what did you personally build, and what result did you achieve?`;
-    }
-    if (jobTitle) {
-      return `Tell me about your experience as a ${jobTitle}${company ? ` at ${company}` : ""}. What did you personally own and what did you learn?`;
-    }
-    if (extractedText) {
-      return "Tell me about yourself using your resume as a guide. Which project or experience best shows that you are ready for this role?";
-    }
-    return "Tell me about yourself and the project or experience that best prepares you for this role.";
+    return "Please introduce yourself. Briefly share your background, strongest skills, and one project or experience that prepares you for this role.";
   }
 
   if (questionKind(question) === "behavioral" && projectName) {
@@ -610,11 +601,11 @@ export default function InterviewRoom() {
                 <div className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
-                      <h4 className="text-sm uppercase tracking-wider text-emerald-300 font-semibold mb-2">What I heard</h4>
+                       <h4 className="text-sm uppercase tracking-wider text-emerald-300 font-semibold mb-2">Correction & feedback</h4>
                       <p className="text-gray-200 leading-relaxed">{evaluation.feedback}</p>
                     </div>
                     <div className="rounded-2xl border border-violet-400/15 bg-violet-400/5 p-4">
-                      <h4 className="text-sm uppercase tracking-wider text-violet-300 font-semibold mb-2">What a strong answer covers</h4>
+                       <h4 className="text-sm uppercase tracking-wider text-violet-300 font-semibold mb-2">How to improve it</h4>
                       <p className="text-gray-200 leading-relaxed">{evaluation.correctAnswer}</p>
                     </div>
                   </div>

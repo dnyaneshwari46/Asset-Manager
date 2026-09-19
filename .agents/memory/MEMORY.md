@@ -1,1 +1,2 @@
 - [Monorepo package installation](package-installation.md) — target dependencies at the artifact package and repair workspace links after filtered installs.
+- [Interview integrity and personalization](interview-integrity.md) — use tab visibility as the session boundary and keep resume wording tied to validated question IDs.

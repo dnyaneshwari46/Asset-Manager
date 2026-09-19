@@ -147,6 +147,8 @@ export interface InterviewInput {
 export interface AnswerInput {
   questionId: number;
   answer: string;
+  /** Optional personalized wording shown to the candidate for this question */
+  questionText?: string;
 }
 
 export interface AnswerEvaluation {

@@ -306,6 +306,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnswerEvaluation"
 
+  /interviews/{id}/abandon:
+    post:
+      operationId: abandonInterview
+      tags: [interviews]
+      summary: End an interview when the candidate leaves the interview tab
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Interview ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSession"
+
   # ─── Questions ────────────────────────────────────────────────────────────
   /questions:
     get:
@@ -693,6 +712,9 @@ components:
           type: integer
         answer:
           type: string
+        questionText:
+          type: string
+          description: Optional personalized wording shown to the candidate for this question
 
     AnswerEvaluation:
       type: object

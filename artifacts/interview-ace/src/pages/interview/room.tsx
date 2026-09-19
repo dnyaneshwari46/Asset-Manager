@@ -1,7 +1,15 @@
-import { useGetInterview, getGetInterviewQueryKey, useSubmitAnswer, useListQuestions, getListQuestionsQueryKey } from "@workspace/api-client-react";
+import {
+  useGetInterview,
+  getGetInterviewQueryKey,
+  useSubmitAnswer,
+  useListQuestions,
+  getListQuestionsQueryKey,
+  useListResumes,
+  useAbandonInterview,
+} from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
-import { useState, useRef, useEffect, useMemo } from "react";
-import { Loader2, Mic, SquareSquare, MonitorUp, Send, CheckCircle2, ChevronRight, User } from "lucide-react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { AlertTriangle, Loader2, Mic, SquareSquare, MonitorUp, Send, CheckCircle2, ChevronRight, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -18,9 +26,10 @@ type InterviewQuestion = {
 type QuestionKind = "technical" | "scenario" | "behavioral";
 
 const QUESTION_PLAN: QuestionKind[] = [
+  "behavioral",
   ...Array<QuestionKind>(5).fill("technical"),
   ...Array<QuestionKind>(5).fill("scenario"),
-  ...Array<QuestionKind>(5).fill("behavioral"),
+  ...Array<QuestionKind>(4).fill("behavioral"),
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -102,11 +111,50 @@ function chooseNextQuestion(
   })[0];
 }
 
+function getResumeQuestionText(
+  question: InterviewQuestion,
+  resume: { content?: Record<string, unknown> } | undefined,
+  questionNumber: number,
+) {
+  if (!resume) return question.text;
+
+  const content = (resume.content || {}) as Record<string, any>;
+  const projects = Array.isArray(content.projects) ? content.projects : [];
+  const experience = Array.isArray(content.experience) ? content.experience : [];
+  const project = projects.find((item) => String(item?.name || item?.title || "").trim());
+  const projectName = String(project?.name || project?.title || "").trim();
+  const experienceItem = experience.find((item) => String(item?.jobTitle || item?.title || "").trim());
+  const jobTitle = String(experienceItem?.jobTitle || experienceItem?.title || "").trim();
+  const company = String(experienceItem?.company || "").trim();
+  const extractedText = String(content.extractedText || "").trim();
+
+  if (questionNumber === 0) {
+    if (projectName) {
+      return `Tell me about ${projectName} from your resume. What problem did it solve, what did you personally build, and what result did you achieve?`;
+    }
+    if (jobTitle) {
+      return `Tell me about your experience as a ${jobTitle}${company ? ` at ${company}` : ""}. What did you personally own and what did you learn?`;
+    }
+    if (extractedText) {
+      return "Tell me about yourself using your resume as a guide. Which project or experience best shows that you are ready for this role?";
+    }
+    return "Tell me about yourself and the project or experience that best prepares you for this role.";
+  }
+
+  if (questionKind(question) === "behavioral" && projectName) {
+    return `For ${projectName} on your resume, what was the hardest decision or problem you faced, and how did you handle it?`;
+  }
+
+  return question.text;
+}
+
 export default function InterviewRoom() {
   const { id } = useParams();
   const interviewId = parseInt(id || "0", 10);
   const { data: interview, isLoading } = useGetInterview(interviewId, { query: { enabled: !!interviewId, queryKey: getGetInterviewQueryKey(interviewId) } });
+  const { data: resumes } = useListResumes();
   const submitAnswer = useSubmitAnswer();
+  const abandonInterview = useAbandonInterview();
   const { data: questions, isLoading: questionsLoading } = useListQuestions(
     interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined,
     { query: { enabled: !!interview, queryKey: getListQuestionsQueryKey(interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined) } },
@@ -123,13 +171,16 @@ export default function InterviewRoom() {
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
   const [screenShareStatus, setScreenShareStatus] = useState<"idle" | "shared" | "declined">("idle");
   const [screenShareError, setScreenShareError] = useState("");
+  const [tabExitNotice, setTabExitNotice] = useState("");
   
   const recognitionRef = useRef<any>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastSpokenQuestionRef = useRef("");
   const lastAnswerRef = useRef("");
+  const tabExitHandledRef = useRef(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const questionBank = useMemo<InterviewQuestion[]>(() => {
@@ -137,6 +188,11 @@ export default function InterviewRoom() {
     const unique = Array.from(new Map(questions.map((question) => [question.text.trim(), question])).values());
     return unique as InterviewQuestion[];
   }, [questions]);
+
+  const latestResume = useMemo(() => {
+    if (!resumes?.length) return undefined;
+    return [...resumes].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+  }, [resumes]);
 
   useEffect(() => {
     setCurrentQuestionIdx(0);
@@ -157,6 +213,37 @@ export default function InterviewRoom() {
   }, [questionBank, questionSequence.length, interview?.answeredQuestionIds]);
 
   const currentQuestion = questionSequence[currentQuestionIdx];
+  const displayedQuestionText = currentQuestion
+    ? getResumeQuestionText(currentQuestion, latestResume, currentQuestionIdx)
+    : "";
+
+  const terminateInterview = useCallback((message: string) => {
+    if (tabExitHandledRef.current) return;
+    tabExitHandledRef.current = true;
+    recognitionRef.current?.stop?.();
+    window.speechSynthesis.cancel();
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setIsRecording(false);
+    setIsInterviewStarted(false);
+    setTabExitNotice(message);
+    abandonInterview.mutate({ id: interviewId }, {
+      onSettled: () => {
+        window.setTimeout(() => setLocation("/interview"), 1800);
+      },
+    });
+  }, [abandonInterview, interviewId, setLocation]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && isInterviewStarted) {
+        terminateInterview("This interview was closed because you left the interview tab. Open a new interview when you are ready to try again.");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isInterviewStarted, terminateInterview]);
 
   const speakQuestion = (text: string) => {
     const questionKey = text.trim().slice(0, 10).toLowerCase();
@@ -199,11 +286,11 @@ export default function InterviewRoom() {
   // every transcript/evaluation render from starting the same utterance again.
   useEffect(() => {
     if (currentQuestion && !evaluation && isInterviewStarted) {
-      const t = setTimeout(() => speakQuestion(currentQuestion.text), 1000);
+      const t = setTimeout(() => speakQuestion(displayedQuestionText), 1000);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [currentQuestionIdx, currentQuestion?.id, evaluation, isInterviewStarted]);
+  }, [currentQuestionIdx, currentQuestion?.id, displayedQuestionText, evaluation, isInterviewStarted]);
 
   useEffect(() => () => {
     window.speechSynthesis.cancel();
@@ -281,7 +368,7 @@ export default function InterviewRoom() {
     
     submitAnswer.mutate({
       id: interviewId, 
-      data: { questionId: currentQuestion.id, answer: transcript.trim() }
+      data: { questionId: currentQuestion.id, questionText: displayedQuestionText, answer: transcript.trim() }
     }, {
       onSuccess: (res) => {
         setTranscript("");
@@ -317,6 +404,7 @@ export default function InterviewRoom() {
         throw new Error("Screen sharing is not supported in this browser.");
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      screenStreamRef.current = stream;
       if (screenVideoRef.current) {
         screenVideoRef.current.srcObject = stream;
       }
@@ -334,6 +422,26 @@ export default function InterviewRoom() {
     if (withScreenShare) await requestScreenShare();
     setIsInterviewStarted(true);
   };
+
+  const handleEndInterview = () => {
+    if (!window.confirm("End this interview? Your completed answers will be kept, but the session will close.")) return;
+    abandonInterview.mutate({ id: interviewId }, {
+      onSettled: () => setLocation("/interview"),
+    });
+  };
+
+  if (tabExitNotice) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#05050a] px-6 text-white">
+        <div className="glass max-w-lg rounded-3xl p-10 text-center">
+          <AlertTriangle className="mx-auto mb-5 h-12 w-12 text-amber-300" />
+          <h1 className="text-2xl font-semibold">Interview closed</h1>
+          <p className="mt-4 leading-relaxed text-gray-300">{tabExitNotice}</p>
+          <p className="mt-5 text-sm text-gray-500">Returning to the interview hub…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !interview || questionsLoading) {
     return (
@@ -362,7 +470,7 @@ export default function InterviewRoom() {
             <MonitorUp className="w-4 h-4 mr-2" />
             Share Screen
           </Button>
-          <Button variant="outline" size="sm" className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300" onClick={() => setLocation('/interview')}>
+          <Button variant="outline" size="sm" className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300" onClick={handleEndInterview}>
             End Interview
           </Button>
         </div>
@@ -421,7 +529,7 @@ export default function InterviewRoom() {
                     )}
                   </div>
                   <h2 className="text-3xl md:text-5xl font-semibold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70">
-                     {currentQuestion?.text || "No questions are available for this role yet."}
+                     {displayedQuestionText || "No questions are available for this role yet."}
                   </h2>
                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-gray-400">
                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">

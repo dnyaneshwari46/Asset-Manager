@@ -1258,6 +1258,77 @@ export const useSubmitAnswer = <TError = ErrorType<unknown>,
       return useMutation(getSubmitAnswerMutationOptions(options));
     }
 
+export const getAbandonInterviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/interviews/${id}/abandon`
+}
+
+/**
+ * @summary End an interview when the candidate leaves the interview tab
+ */
+export const abandonInterview = async (id: number, options?: RequestInit): Promise<InterviewSession> => {
+
+  return customFetch<InterviewSession>(getAbandonInterviewUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAbandonInterviewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof abandonInterview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof abandonInterview>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['abandonInterview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof abandonInterview>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  abandonInterview(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AbandonInterviewMutationResult = NonNullable<Awaited<ReturnType<typeof abandonInterview>>>
+
+    export type AbandonInterviewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary End an interview when the candidate leaves the interview tab
+ */
+export const useAbandonInterview = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof abandonInterview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof abandonInterview>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getAbandonInterviewMutationOptions(options));
+    }
+
 export const getListQuestionsUrl = (params?: ListQuestionsParams,) => {
   const normalizedParams = new URLSearchParams();
 

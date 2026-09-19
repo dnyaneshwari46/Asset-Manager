@@ -277,7 +277,8 @@ export const SubmitAnswerParams = zod.object({
 
 export const SubmitAnswerBody = zod.object({
   "questionId": zod.number(),
-  "answer": zod.string()
+  "answer": zod.string(),
+  "questionText": zod.string().optional().describe('Optional personalized wording shown to the candidate for this question')
 })
 
 export const SubmitAnswerResponse = zod.object({
@@ -291,6 +292,29 @@ export const SubmitAnswerResponse = zod.object({
   "correctAnswer": zod.string(),
   "feedback": zod.string(),
   "improvements": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary End an interview when the candidate leaves the interview tab
+ */
+export const AbandonInterviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AbandonInterviewResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "status": zod.string(),
+  "technicalScore": zod.number().nullable(),
+  "communicationScore": zod.number().nullable(),
+  "confidenceScore": zod.number().nullable(),
+  "questionsAsked": zod.number(),
+  "answersGiven": zod.number(),
+  "answeredQuestionIds": zod.array(zod.number()).optional(),
+  "createdAt": zod.string()
 })
 
 

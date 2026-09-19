@@ -5,7 +5,7 @@ import { requireAuth, resolveDbUser } from "../lib/auth";
 import {
   ListInterviewsResponse, CreateInterviewBody, CreateInterviewResponse,
   GetInterviewParams, GetInterviewResponse, DeleteInterviewParams,
-  SubmitAnswerParams, SubmitAnswerBody, SubmitAnswerResponse,
+  SubmitAnswerParams, SubmitAnswerBody, SubmitAnswerResponse, AbandonInterviewParams,
 } from "@workspace/api-zod";
 import { geminiPrompt, parseGeminiJson } from "../lib/gemini";
 import { ensureRoleQuestions } from "../lib/role-question-bank";
@@ -172,6 +172,26 @@ router.delete("/interviews/:id", requireAuth, resolveDbUser, async (req, res): P
   res.sendStatus(204);
 });
 
+router.post("/interviews/:id/abandon", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
+  const params = AbandonInterviewParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const userId = req.dbUser!.id;
+  const [session] = await db.select().from(interviewSessionsTable)
+    .where(and(eq(interviewSessionsTable.id, params.data.id), eq(interviewSessionsTable.userId, userId)));
+  if (!session) { res.status(404).json({ error: "Interview not found" }); return; }
+
+  if (session.status === "active") {
+    const [abandoned] = await db.update(interviewSessionsTable)
+      .set({ status: "abandoned" })
+      .where(eq(interviewSessionsTable.id, session.id))
+      .returning();
+    res.json(serializeSession(abandoned));
+    return;
+  }
+
+  res.json(serializeSession(session));
+});
+
 router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, res): Promise<void> => {
   const params = SubmitAnswerParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
@@ -183,8 +203,11 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     .where(and(eq(interviewSessionsTable.id, params.data.id), eq(interviewSessionsTable.userId, userId)));
   if (!session) { res.status(404).json({ error: "Interview not found" }); return; }
   const normalized = await normalizeSession(session);
-  if (normalized.session.status === "completed") {
-    res.status(409).json({ error: "This interview is already completed" }); return;
+  if (normalized.session.status !== "active") {
+    const message = normalized.session.status === "completed"
+      ? "This interview is already completed"
+      : "This interview is closed";
+    res.status(409).json({ error: message }); return;
   }
 
   const [question] = await db.select().from(questionsTable)
@@ -248,7 +271,7 @@ Conversation so far:
 ${conversationContext}
 Evaluate this interview answer and return ONLY valid JSON (no markdown).
 
-Question: ${question.text}
+Question: ${body.data.questionText?.trim() || question.text}
 Category: ${question.category}
 Difficulty: ${question.difficulty}
 Candidate's Answer: ${body.data.answer}

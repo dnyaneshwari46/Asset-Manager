@@ -9,7 +9,7 @@ export const interviewSessionsTable = pgTable("interview_sessions", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   category: text("category").notNull(),
   difficulty: text("difficulty").notNull(),
-  status: text("status").notNull().default("active"), // active | completed
+  status: text("status").notNull().default("active"), // active | completed | abandoned
   technicalScore: real("technical_score"),
   communicationScore: real("communication_score"),
   confidenceScore: real("confidence_score"),

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 export default function ResumeEdit() {
   const { id } = useParams();
@@ -141,6 +143,165 @@ export default function ResumeEdit() {
     }));
   };
 
+  const handleDownloadPDF = async () => {
+    try {
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 18;
+      const contentWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      const addPageIfNeeded = (height: number) => {
+        if (y + height > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+      };
+
+      const addText = (text: string, size = 10, bold = false, gap = 5) => {
+        if (!text) return;
+        pdf.setFont("helvetica", bold ? "bold" : "normal");
+        pdf.setFontSize(size);
+        const lines = pdf.splitTextToSize(String(text), contentWidth);
+        const lineHeight = size * 0.45;
+        addPageIfNeeded(lines.length * lineHeight + gap);
+        pdf.text(lines, margin, y);
+        y += lines.length * lineHeight + gap;
+      };
+
+      const addSection = (heading: string) => {
+        addPageIfNeeded(12);
+        y += 3;
+        pdf.setDrawColor(180, 180, 180);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 6;
+        addText(heading.toUpperCase(), 12, true, 5);
+      };
+
+      const personal = content?.personalDetails || {};
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(20);
+      pdf.text(String(personal.name || title || "Resume"), pageWidth / 2, y, { align: "center" });
+      y += 8;
+
+      const contact = [personal.email, personal.phone, personal.location]
+        .filter(Boolean)
+        .join("  |  ");
+
+      if (contact) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        pdf.text(contact, pageWidth / 2, y, { align: "center" });
+        y += 8;
+      }
+
+      if (content?.summary) {
+        addSection("Summary");
+        addText(content.summary, 10, false, 4);
+      }
+
+      const experience = Array.isArray(content?.experience) ? content.experience : [];
+      if (experience.length) {
+        addSection("Experience");
+
+        experience.forEach((item: any) => {
+          const jobTitle = item?.jobTitle || item?.title || "";
+          const company = item?.company || "";
+          const location = item?.location || "";
+          const dates = [item?.startDate, item?.endDate].filter(Boolean).join(" - ");
+
+          addPageIfNeeded(14);
+          addText(jobTitle, 10.5, true, 2);
+
+          const details = [company, location, dates].filter(Boolean).join("  |  ");
+          if (details) addText(details, 9, false, 3);
+
+          const bullets = String(item?.description || "")
+            .split(/\n|[•]/)
+            .map((line: string) => line.trim())
+            .filter(Boolean);
+
+          bullets.forEach((bullet: string) => {
+            const lines = pdf.splitTextToSize("• " + bullet, contentWidth - 4);
+            addPageIfNeeded(lines.length * 4.5 + 2);
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(9.5);
+            pdf.text(lines, margin + 2, y);
+            y += lines.length * 4.5 + 2;
+          });
+
+          y += 2;
+        });
+      }
+
+      const education = Array.isArray(content?.education) ? content.education : [];
+      if (education.length) {
+        addSection("Education");
+
+        education.forEach((item: any) => {
+          const degree = item?.degree || item?.title || "";
+          const institution = item?.institution || item?.school || "";
+          const location = item?.location || "";
+          const date = item?.graduationDate || "";
+
+          addText(degree, 10.5, true, 2);
+
+          const details = [institution, location, date].filter(Boolean).join("  |  ");
+          if (details) addText(details, 9, false, 3);
+
+          if (item?.description) addText(item.description, 9.5, false, 3);
+          y += 2;
+        });
+      }
+
+      const skills = Array.isArray(content?.skills)
+        ? content.skills
+            .map((skill: any) => typeof skill === "string" ? skill : skill?.name || "")
+            .filter(Boolean)
+            .join(", ")
+        : "";
+
+      if (skills) {
+        addSection("Skills");
+        addText(skills, 10, false, 4);
+      }
+
+      const projects = Array.isArray(content?.projects) ? content.projects : [];
+      if (projects.length) {
+        addSection("Projects");
+
+        projects.forEach((project: any) => {
+          const name = project?.name || project?.title || "";
+          const technologies = project?.technologies || project?.techStack || "";
+          const description = project?.description || "";
+
+          if (name) addText(name, 10.5, true, 2);
+          if (technologies) addText(String(technologies), 9, false, 2);
+          if (description) addText(description, 9.5, false, 4);
+        });
+      }
+
+      const filename = String(title || "resume")
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-+|-+$/g, "") || "resume";
+
+      pdf.save(`${filename}.pdf`);
+
+      toast({
+        title: "PDF downloaded",
+        description: "Your resume PDF is ready.",
+      });
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      toast({
+        title: "PDF export failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
   const skillsText = Array.isArray(content?.skills)
     ? content.skills.map((skill: any) => (typeof skill === "string" ? skill : skill.name || "")).join(", ")
     : "";
@@ -205,7 +366,7 @@ export default function ResumeEdit() {
             {!updateResume.isPending && <SaveIcon className="w-4 h-4 sm:mr-2" />}
             <span className="hidden sm:inline">Save</span>
           </Button>
-          <Button aria-label="Download resume as PDF" className="bg-white text-black hover:bg-gray-200 px-2 sm:px-4">
+          <Button aria-label="Download resume as PDF" onClick={handleDownloadPDF} className="bg-white text-black hover:bg-gray-200 px-2 sm:px-4">
             <Download className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">PDF</span>
           </Button>
@@ -369,7 +530,7 @@ export default function ResumeEdit() {
 
         {/* Live Preview Panel */}
         <div className="relative z-10 flex min-h-0 w-full min-w-0 flex-1 basis-1/2 items-start justify-center overflow-y-auto overflow-x-auto bg-[#1e1e2d] p-4 sm:p-6 lg:w-1/2 lg:flex-none lg:basis-auto lg:p-8 custom-scrollbar">
-          <div className="w-full max-w-[800px] min-w-0 min-h-[1056px] bg-white text-black shadow-2xl p-6 sm:p-8 lg:p-12">
+          <div id="resume-preview" className="w-full max-w-[800px] min-w-0 min-h-[1056px] bg-white text-black shadow-2xl p-6 sm:p-8 lg:p-12">
             {/* Simple classic template rendering */}
             <div className="text-center mb-6">
               <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">{content?.personalDetails?.name || 'Your Name'}</h1>
@@ -461,3 +622,10 @@ export default function ResumeEdit() {
     </div>
   );
 }
+
+
+
+
+
+
+

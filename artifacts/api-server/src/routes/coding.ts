@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+﻿import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, codingProblemsTable, codingSubmissionsTable, activityLogTable } from "@workspace/db";
 import { requireAuth, resolveDbUser } from "../lib/auth";
@@ -8,6 +8,8 @@ import {
   ListCodingSubmissionsResponse, SubmitCodeBody, SubmitCodeResponse,
 } from "@workspace/api-zod";
 import { geminiPrompt, parseGeminiJson } from "../lib/gemini";
+import { submitToJudge0, JUDGE0_LANGUAGE_IDS } from "../lib/code-execution/judge0";
+import { buildHarness, extractResult, valuesEqual } from "../lib/code-execution/harness";
 
 const router: IRouter = Router();
 
@@ -58,38 +60,113 @@ router.post("/coding-submissions", requireAuth, resolveDbUser, async (req, res):
   const [problem] = await db.select().from(codingProblemsTable).where(eq(codingProblemsTable.id, body.data.problemId));
   if (!problem) { res.status(404).json({ error: "Problem not found" }); return; }
 
-  // AI code review
-  const prompt = `You are a senior software engineer at a FAANG company doing code review.
-Review this ${body.data.language} solution for the problem "${problem.title}".
-Problem: ${problem.description}
+  const testCases = (problem.testCases as { input: string; expected: string }[]) ?? [];
+  const language = body.data.language as keyof typeof JUDGE0_LANGUAGE_IDS;
+  const languageId = JUDGE0_LANGUAGE_IDS[language];
+
+  if (!languageId) {
+    res.status(400).json({ error: `Unsupported language: ${body.data.language}` });
+    return;
+  }
+
+  let testsPassed = 0;
+  let firstError = "";
+
+  for (const testCase of testCases) {
+    try {
+      const harness = buildHarness(
+        problem.title,
+        language,
+        body.data.code,
+        testCase.input,
+      );
+
+      const execution = await submitToJudge0({
+        languageId,
+        sourceCode: harness,
+        cpuTimeLimit: 5,
+        wallTimeLimit: 10,
+        memoryLimit: 256000,
+      });
+
+      if (execution.status.id === 3) {
+        const actual = extractResult(execution.stdout);
+
+        if (actual !== null && valuesEqual(actual, testCase.expected)) {
+          testsPassed++;
+        } else if (!firstError) {
+          firstError = `Expected ${testCase.expected}, but received ${actual ?? "no result"}.`;
+        }
+      } else if (!firstError) {
+        firstError =
+          execution.stderr ||
+          execution.compile_output ||
+          execution.message ||
+          execution.status.description;
+      }
+    } catch (error) {
+      if (!firstError) {
+        firstError = error instanceof Error ? error.message : "Code execution failed.";
+      }
+    }
+  }
+
+  const testsTotal = testCases.length;
+  const score = testsTotal > 0 ? Math.round((testsPassed / testsTotal) * 100) : 0;
+  const passed = testsTotal > 0 && testsPassed === testsTotal;
+
+  const reviewPrompt = `You are reviewing a coding solution after deterministic execution.
+
+Problem: ${problem.title}
+Description: ${problem.description}
+Language: ${body.data.language}
+
+Deterministic test result:
+- Tests passed: ${testsPassed}/${testsTotal}
+- Score: ${score}/100
+- All tests passed: ${passed}
+${firstError ? `- First execution error: ${firstError}` : ""}
+
 Code:
 ${body.data.code}
 
-Return ONLY valid JSON (no markdown):
+Return ONLY valid JSON:
 {
-  "score": <0-100>,
-  "passed": <true/false>,
-  "testsPassed": <number>,
-  "testsTotal": ${((problem.testCases as unknown[]) ?? []).length || 5},
   "aiReview": "Detailed code review paragraph",
   "complexity": "Time: O(...), Space: O(...)",
   "suggestions": ["improvement 1", "improvement 2", "improvement 3"]
 }`;
 
-  const aiText = await geminiPrompt(prompt);
-  const review = aiText ? parseGeminiJson<{
-    score: number; passed: boolean; testsPassed: number; testsTotal: number;
-    aiReview: string; complexity: string; suggestions: string[];
-  }>(aiText) : null;
+  const aiText = await geminiPrompt(reviewPrompt);
 
-  const total = ((problem.testCases as unknown[]) ?? []).length || 5;
-  const result = review ?? {
-    score: 70, passed: false, testsPassed: Math.floor(total * 0.7), testsTotal: total,
-    aiReview: "Your solution demonstrates understanding of the problem. Consider edge cases and optimize for better time complexity.",
-    complexity: "Time: O(n), Space: O(1)",
-    suggestions: ["Handle edge cases", "Consider using a hash map for O(1) lookup", "Add comments"],
+  const review = aiText
+    ? parseGeminiJson<{
+        aiReview: string;
+        complexity: string;
+        suggestions: string[];
+      }>(aiText)
+    : null;
+
+  const result = {
+    score,
+    passed,
+    testsPassed,
+    testsTotal,
+    aiReview:
+      review?.aiReview ??
+      (passed
+        ? "All tests passed. Review the solution for readability, edge cases, and efficiency."
+        : firstError ||
+          "Some tests failed. Review the failing case and check edge cases."),
+    complexity:
+      review?.complexity ?? "Complexity analysis unavailable.",
+    suggestions:
+      review?.suggestions ?? [
+        "Review edge cases.",
+        "Check time and space complexity.",
+        "Improve readability where possible.",
+      ],
   };
-
   const [submission] = await db.insert(codingSubmissionsTable).values({
     userId, problemId: body.data.problemId, language: body.data.language,
     code: body.data.code, ...result, suggestions: result.suggestions,
@@ -97,7 +174,7 @@ Return ONLY valid JSON (no markdown):
 
   await db.insert(activityLogTable).values({
     userId, type: "coding", title: "Code Submitted",
-    description: `${problem.title} — ${body.data.language}`, score: result.score,
+    description: `${problem.title} â€” ${body.data.language}`, score: result.score,
   });
 
   res.status(201).json(SubmitCodeResponse.parse({
@@ -111,3 +188,5 @@ Return ONLY valid JSON (no markdown):
 });
 
 export default router;
+
+

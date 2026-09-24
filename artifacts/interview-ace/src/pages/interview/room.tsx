@@ -116,21 +116,15 @@ function getResumeQuestionText(
   resume: { content?: Record<string, unknown> } | undefined,
   questionNumber: number,
 ) {
+  if (questionNumber === 0) {
+    return "Please introduce yourself. Briefly share your background, strongest skills, and one project or experience that prepares you for this role.";
+  }
   if (!resume) return question.text;
 
   const content = (resume.content || {}) as Record<string, any>;
   const projects = Array.isArray(content.projects) ? content.projects : [];
-  const experience = Array.isArray(content.experience) ? content.experience : [];
   const project = projects.find((item) => String(item?.name || item?.title || "").trim());
   const projectName = String(project?.name || project?.title || "").trim();
-  const experienceItem = experience.find((item) => String(item?.jobTitle || item?.title || "").trim());
-  const jobTitle = String(experienceItem?.jobTitle || experienceItem?.title || "").trim();
-  const company = String(experienceItem?.company || "").trim();
-  const extractedText = String(content.extractedText || "").trim();
-
-  if (questionNumber === 0) {
-    return "Please introduce yourself. Briefly share your background, strongest skills, and one project or experience that prepares you for this role.";
-  }
 
   if (questionKind(question) === "behavioral" && projectName) {
     return `For ${projectName} on your resume, what was the hardest decision or problem you faced, and how did you handle it?`;

@@ -1,7 +1,14 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useListInterviews, useCreateInterview, useGetMe } from "@workspace/api-client-react";
+import {
+  useListInterviews,
+  useCreateInterview,
+  useGetMe,
+  useListResumes,
+  useCreateResume,
+  getListResumesQueryKey,
+} from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { Loader2, Mic, Play, Plus, Video } from "lucide-react";
+import { Loader2, Mic, Play, Plus, Upload, Video } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -10,7 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { extractResumeText, buildResumeContent } from "@/lib/resume-parser";
+import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   category: z.enum(['java', 'python', 'mern', 'fullstack', 'data_analyst', 'data_science', 'ai_ml', 'hr']),
@@ -20,8 +30,15 @@ const formSchema = z.object({
 export default function InterviewHub() {
   const { data: interviews, isLoading } = useListInterviews();
   const { data: profile } = useGetMe();
+  const { data: resumes } = useListResumes();
   const createInterview = useCreateInterview();
+  const createResume = useCreateResume();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [selectedResumeId, setSelectedResumeId] = useState("");
+  const [resumeFileName, setResumeFileName] = useState("");
+  const [isParsingResume, setIsParsingResume] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,7 +63,59 @@ export default function InterviewHub() {
     if (inferredCategory) form.setValue("category", inferredCategory);
   }, [profile?.targetRole, form]);
 
+  useEffect(() => {
+    if (!selectedResumeId && resumes?.length) {
+      const latest = [...resumes].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+      setSelectedResumeId(String(latest.id));
+    }
+  }, [resumes, selectedResumeId]);
+
+  const handleResumeUpload = async (file?: File) => {
+    if (!file) return;
+    if (!/\.(pdf|docx|txt)$/i.test(file.name)) {
+      toast({ title: "Unsupported resume type", description: "Upload a PDF, DOCX, or TXT file.", variant: "destructive" });
+      return;
+    }
+
+    setResumeFileName(file.name);
+    setIsParsingResume(true);
+    try {
+      const text = await extractResumeText(file);
+      if (!text.trim()) throw new Error("No readable text was found in this resume.");
+      const resume = await createResume.mutateAsync({
+        data: {
+          title: file.name.replace(/\.[^.]+$/, "") || "Interview Resume",
+          template: "classic",
+          content: buildResumeContent(text),
+        },
+      });
+      queryClient.setQueryData(getListResumesQueryKey(), (existing: typeof resumes = []) => [
+        resume,
+        ...(existing || []).filter((item) => item.id !== resume.id),
+      ]);
+      setSelectedResumeId(String(resume.id));
+      toast({ title: "Resume ready", description: "Your projects and skills will guide the interview questions." });
+    } catch (error) {
+      setResumeFileName("");
+      toast({
+        title: "Could not use this resume",
+        description: error instanceof Error ? error.message : "Please upload another file.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsParsingResume(false);
+    }
+  };
+
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    if (!selectedResumeId && !resumes?.length) {
+      toast({
+        title: "Upload a resume first",
+        description: "Upload a PDF, DOCX, or TXT resume so the interviewer can ask about your projects and skills.",
+        variant: "destructive",
+      });
+      return;
+    }
     createInterview.mutate({ data: values }, {
       onSuccess: (session) => {
         setLocation(`/interview/${session.id}`);
@@ -138,8 +207,45 @@ export default function InterviewHub() {
                     )}
                   />
 
-                  <Button type="submit" disabled={createInterview.isPending} className="w-full bg-violet-600 hover:bg-violet-700">
-                    {createInterview.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Video className="w-4 h-4 mr-2" />}
+                  <div className="rounded-2xl border border-violet-400/20 bg-violet-400/5 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-violet-200">Resume for personalized questions</p>
+                      <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                        The interviewer will ask about projects, skills, and experience found in your resume.
+                      </p>
+                    </div>
+                    {resumes?.length ? (
+                      <select
+                        value={selectedResumeId}
+                        onChange={(event) => setSelectedResumeId(event.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-[#1e1e2d] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-violet-500"
+                      >
+                        {resumes.map((resume) => (
+                          <option key={resume.id} value={resume.id}>
+                            {resume.title}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-3 text-sm text-gray-300 transition hover:border-violet-400/50 hover:bg-white/5">
+                      {isParsingResume || createResume.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      {resumeFileName || (resumes?.length ? "Upload a different resume" : "Upload your resume")}
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        className="hidden"
+                        disabled={isParsingResume || createResume.isPending}
+                        onChange={(event) => {
+                          void handleResumeUpload(event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {selectedResumeId && <p className="text-xs text-emerald-300">Resume selected for this interview.</p>}
+                  </div>
+
+                  <Button type="submit" disabled={createInterview.isPending || isParsingResume || createResume.isPending} className="w-full bg-violet-600 hover:bg-violet-700">
+                    {createInterview.isPending || isParsingResume || createResume.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Video className="w-4 h-4 mr-2" />}
                     Enter Interview Room
                   </Button>
                 </form>

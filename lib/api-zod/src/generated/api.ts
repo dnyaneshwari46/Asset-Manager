@@ -197,6 +197,7 @@ export const AnalyzeResumeResponse = zod.object({
 export const ListInterviewsResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
+  "resumeId": zod.number().nullable(),
   "category": zod.string(),
   "difficulty": zod.string(),
   "status": zod.string(),
@@ -215,6 +216,7 @@ export const ListInterviewsResponse = zod.array(ListInterviewsResponseItem)
  * @summary Start a new mock interview session
  */
 export const CreateInterviewBody = zod.object({
+  "resumeId": zod.number(),
   "category": zod.enum(['java', 'python', 'mern', 'fullstack', 'data_analyst', 'data_science', 'ai_ml', 'hr']),
   "difficulty": zod.enum(['beginner', 'intermediate', 'advanced'])
 })
@@ -222,6 +224,7 @@ export const CreateInterviewBody = zod.object({
 export const CreateInterviewResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
+  "resumeId": zod.number().nullable(),
   "category": zod.string(),
   "difficulty": zod.string(),
   "status": zod.string(),
@@ -245,6 +248,7 @@ export const GetInterviewParams = zod.object({
 export const GetInterviewResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
+  "resumeId": zod.number().nullable(),
   "category": zod.string(),
   "difficulty": zod.string(),
   "status": zod.string(),
@@ -305,6 +309,7 @@ export const AbandonInterviewParams = zod.object({
 export const AbandonInterviewResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
+  "resumeId": zod.number().nullable(),
   "category": zod.string(),
   "difficulty": zod.string(),
   "status": zod.string(),

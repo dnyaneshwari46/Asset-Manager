@@ -9,6 +9,7 @@ import type { InterviewInputCategory } from './interviewInputCategory';
 import type { InterviewInputDifficulty } from './interviewInputDifficulty';
 
 export interface InterviewInput {
+  resumeId: number;
   category: InterviewInputCategory;
   difficulty: InterviewInputDifficulty;
 }

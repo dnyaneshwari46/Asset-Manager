@@ -9,6 +9,8 @@
 export interface InterviewSession {
   id: number;
   userId: number;
+  /** @nullable */
+  resumeId: number | null;
   category: string;
   difficulty: string;
   status: string;

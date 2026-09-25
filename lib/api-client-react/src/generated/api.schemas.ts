@@ -101,6 +101,8 @@ export interface ResumeAnalysis {
 export interface InterviewSession {
   id: number;
   userId: number;
+  /** @nullable */
+  resumeId: number | null;
   category: string;
   difficulty: string;
   status: string;
@@ -140,6 +142,7 @@ export const InterviewInputDifficulty = {
 } as const;
 
 export interface InterviewInput {
+  resumeId: number;
   category: InterviewInputCategory;
   difficulty: InterviewInputDifficulty;
 }

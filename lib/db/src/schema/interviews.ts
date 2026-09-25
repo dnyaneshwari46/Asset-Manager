@@ -1,12 +1,14 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { questionsTable } from "./questions";
+import { resumesTable } from "./resumes";
 
 export const interviewSessionsTable = pgTable("interview_sessions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  resumeId: integer("resume_id").references(() => resumesTable.id, { onDelete: "set null" }),
   category: text("category").notNull(),
   difficulty: text("difficulty").notNull(),
   status: text("status").notNull().default("active"), // active | completed | abandoned
@@ -30,7 +32,9 @@ export const interviewAnswersTable = pgTable("interview_answers", {
   feedback: text("feedback").notNull().default(""),
   improvements: jsonb("improvements").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  unique("interview_answers_interview_question_unique").on(table.interviewId, table.questionId),
+]);
 
 export const insertInterviewSessionSchema = createInsertSchema(interviewSessionsTable).omit({ id: true, createdAt: true });
 export const insertInterviewAnswerSchema = createInsertSchema(interviewAnswersTable).omit({ id: true, createdAt: true });
@@ -38,3 +42,8 @@ export type InsertInterviewSession = z.infer<typeof insertInterviewSessionSchema
 export type InsertInterviewAnswer = z.infer<typeof insertInterviewAnswerSchema>;
 export type InterviewSession = typeof interviewSessionsTable.$inferSelect;
 export type InterviewAnswer = typeof interviewAnswersTable.$inferSelect;
+
+
+
+
+

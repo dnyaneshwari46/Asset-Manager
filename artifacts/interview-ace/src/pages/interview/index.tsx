@@ -108,7 +108,7 @@ export default function InterviewHub() {
   };
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
-    if (!selectedResumeId && !resumes?.length) {
+    if (!selectedResumeId) {
       toast({
         title: "Upload a resume first",
         description: "Upload a PDF, DOCX, or TXT resume so the interviewer can ask about your projects and skills.",
@@ -116,7 +116,7 @@ export default function InterviewHub() {
       });
       return;
     }
-    createInterview.mutate({ data: values }, {
+    createInterview.mutate({ data: { ...values, resumeId: Number(selectedResumeId) } }, {
       onSuccess: (session) => {
         setLocation(`/interview/${session.id}`);
       }

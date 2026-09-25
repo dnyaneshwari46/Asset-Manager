@@ -664,12 +664,14 @@ components:
     # ─── Interview ─────────────────────────────────────────────────────────
     InterviewSession:
       type: object
-      required: [id, userId, category, difficulty, status, technicalScore, communicationScore, confidenceScore, questionsAsked, answersGiven, createdAt]
+      required: [id, userId, resumeId, category, difficulty, status, technicalScore, communicationScore, confidenceScore, questionsAsked, answersGiven, createdAt]
       properties:
         id:
           type: integer
         userId:
           type: integer
+        resumeId:
+          type: ["integer", "null"]
         category:
           type: string
         difficulty:
@@ -695,15 +697,16 @@ components:
 
     InterviewInput:
       type: object
-      required: [category, difficulty]
+      required: [category, difficulty, resumeId]
       properties:
+        resumeId:
+          type: integer
         category:
           type: string
           enum: [java, python, mern, fullstack, data_analyst, data_science, ai_ml, hr]
         difficulty:
           type: string
           enum: [beginner, intermediate, advanced]
-
     AnswerInput:
       type: object
       required: [questionId, answer]
@@ -943,3 +946,10 @@ components:
           items:
             type: object
             additionalProperties: true
+
+
+
+
+
+
+

@@ -126,7 +126,7 @@ function getResumeQuestionText(
   const project = projects.find((item) => String(item?.name || item?.title || "").trim());
   const projectName = String(project?.name || project?.title || "").trim();
 
-  if (questionKind(question) === "behavioral" && projectName) {
+  if (questionNumber === 11 && questionKind(question) === "behavioral" && projectName) {
     return `For ${projectName} on your resume, what was the hardest decision or problem you faced, and how did you handle it?`;
   }
 
@@ -174,10 +174,13 @@ export default function InterviewRoom() {
     return unique as InterviewQuestion[];
   }, [questions]);
 
-  const latestResume = useMemo(() => {
+  const interviewResume = useMemo(() => {
     if (!resumes?.length) return undefined;
+    if (interview?.resumeId) {
+      return resumes.find((resume) => resume.id === interview.resumeId);
+    }
     return [...resumes].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-  }, [resumes]);
+  }, [resumes, interview?.resumeId]);
 
   useEffect(() => {
     setCurrentQuestionIdx(0);
@@ -199,7 +202,7 @@ export default function InterviewRoom() {
 
   const currentQuestion = questionSequence[currentQuestionIdx];
   const displayedQuestionText = currentQuestion
-    ? getResumeQuestionText(currentQuestion, latestResume, currentQuestionIdx)
+    ? getResumeQuestionText(currentQuestion, interviewResume, currentQuestionIdx)
     : "";
 
   const terminateInterview = useCallback((message: string) => {
@@ -665,3 +668,4 @@ function ScoreRing({ score, label, color }: { score: number, label: string, colo
     </div>
   );
 }
+

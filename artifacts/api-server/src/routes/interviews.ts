@@ -91,7 +91,7 @@ function createFallbackEvaluation(question: typeof questionsTable.$inferSelect, 
 
 function serializeSession(s: typeof interviewSessionsTable.$inferSelect) {
   return {
-    id: s.id, userId: s.userId, category: s.category, difficulty: s.difficulty,
+    id: s.id, userId: s.userId, resumeId: s.resumeId ?? null, category: s.category, difficulty: s.difficulty,
     status: s.status, technicalScore: s.technicalScore ?? null,
     communicationScore: s.communicationScore ?? null, confidenceScore: s.confidenceScore ?? null,
     questionsAsked: s.questionsAsked, answersGiven: s.answersGiven,
@@ -135,11 +135,14 @@ router.post("/interviews", requireAuth, resolveDbUser, async (req, res): Promise
   const parsed = CreateInterviewBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const userId = req.dbUser!.id;
+  const [resume] = await db.select({ id: resumesTable.id }).from(resumesTable)
+    .where(and(eq(resumesTable.id, parsed.data.resumeId), eq(resumesTable.userId, userId)));
+  if (!resume) { res.status(400).json({ error: "Selected resume not found" }); return; }
   const questions = await ensureRoleQuestions(parsed.data.category, parsed.data.difficulty);
 
   // Count questions for this category/difficulty
   const [session] = await db.insert(interviewSessionsTable).values({
-    userId, category: parsed.data.category, difficulty: parsed.data.difficulty,
+    userId, resumeId: parsed.data.resumeId, category: parsed.data.category, difficulty: parsed.data.difficulty,
     questionsAsked: Math.min(15, questions.length),
   }).returning();
 
@@ -232,10 +235,14 @@ router.post("/interviews/:id/answers", requireAuth, resolveDbUser, async (req, r
     res.status(409).json({ error: "This question has already been answered" }); return;
   }
 
-  const [latestResume] = await db.select().from(resumesTable)
-    .where(eq(resumesTable.userId, userId))
-    .orderBy(desc(resumesTable.updatedAt))
-    .limit(1);
+  const [latestResume] = normalized.session.resumeId
+    ? await db.select().from(resumesTable)
+        .where(and(eq(resumesTable.id, normalized.session.resumeId), eq(resumesTable.userId, userId)))
+        .limit(1)
+    : await db.select().from(resumesTable)
+        .where(eq(resumesTable.userId, userId))
+        .orderBy(desc(resumesTable.updatedAt))
+        .limit(1);
   const resumeContent = (latestResume?.content || {}) as Record<string, unknown>;
   const resumeContext = JSON.stringify({
     targetRole: resumeContent.targetRole,
@@ -346,3 +353,9 @@ Return this exact JSON format:
 });
 
 export default router;
+
+
+
+
+
+

@@ -46,12 +46,12 @@ router.get("/dashboard/stats", requireAuth, resolveDbUser, async (req, res): Pro
 
   res.json(GetDashboardStatsResponse.parse({
     resumeScore: resumes[0]?.atsScore ?? null,
-    interviewCount: interviews.length,
+    interviewCount: interviews.filter(i => i.status === 'completed').length,
     avgTechnicalScore: avgTech && !isNaN(avgTech) ? Math.round(avgTech) : null,
     avgCommunicationScore: avgComm && !isNaN(avgComm) ? Math.round(avgComm) : null,
     avgCodingScore: avgCode ?? null,
     weakTopics,
-    totalSubmissions: codingStats.length,
+    totalSubmissions: new Set(codingStats.map(c => c.problemId)).size,
   }));
 });
 

@@ -140,9 +140,13 @@ export default function InterviewRoom() {
   const { data: resumes } = useListResumes();
   const submitAnswer = useSubmitAnswer();
   const abandonInterview = useAbandonInterview();
+  const questionParams = interview
+    ? { interviewId: interview.id, limit: 15 }
+    : undefined;
+
   const { data: questions, isLoading: questionsLoading } = useListQuestions(
-    interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined,
-    { query: { enabled: !!interview, queryKey: getListQuestionsQueryKey(interview ? { category: interview.category, difficulty: interview.difficulty, limit: 50 } : undefined) } },
+    questionParams,
+    { query: { enabled: !!interview, queryKey: getListQuestionsQueryKey(questionParams) } },
   );
   const [, setLocation] = useLocation();
 
@@ -157,6 +161,7 @@ export default function InterviewRoom() {
   const [screenShareStatus, setScreenShareStatus] = useState<"idle" | "shared" | "declined">("idle");
   const [screenShareError, setScreenShareError] = useState("");
   const [tabExitNotice, setTabExitNotice] = useState("");
+  const [tabWarning, setTabWarning] = useState("");
   
   const recognitionRef = useRef<any>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
@@ -166,6 +171,7 @@ export default function InterviewRoom() {
   const lastSpokenQuestionRef = useRef("");
   const lastAnswerRef = useRef("");
   const tabExitHandledRef = useRef(false);
+  const tabSwitchCountRef = useRef(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const questionBank = useMemo<InterviewQuestion[]>(() => {
@@ -224,9 +230,21 @@ export default function InterviewRoom() {
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && isInterviewStarted) {
-        terminateInterview("This interview was closed because you left the interview tab. Open a new interview when you are ready to try again.");
+      if (!document.hidden || !isInterviewStarted || tabExitHandledRef.current) return;
+
+      tabSwitchCountRef.current += 1;
+
+      if (tabSwitchCountRef.current === 1) {
+        setTabExitNotice(
+          "Warning: You left the interview tab. Please return to the interview. Leaving the tab again will close this interview.",
+        );
+        window.setTimeout(() => setTabExitNotice(""), 3500);
+        return;
       }
+
+      terminateInterview(
+        "This interview was closed because you left the interview tab a second time. Open a new interview when you are ready to try again.",
+      );
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -418,6 +436,24 @@ export default function InterviewRoom() {
     });
   };
 
+  if (tabWarning) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#05050a] px-6 text-white">
+        <div className="glass max-w-lg rounded-3xl p-10 text-center">
+          <AlertTriangle className="mx-auto mb-5 h-12 w-12 text-amber-300" />
+          <h1 className="text-2xl font-semibold">Warning</h1>
+          <p className="mt-4 leading-relaxed text-gray-300">{tabWarning}</p>
+          <button
+            type="button"
+            onClick={() => setTabWarning("")}
+            className="mt-6 rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:bg-gray-200"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (tabExitNotice) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#05050a] px-6 text-white">
@@ -668,4 +704,11 @@ function ScoreRing({ score, label, color }: { score: number, label: string, colo
     </div>
   );
 }
+
+
+
+
+
+
+
 

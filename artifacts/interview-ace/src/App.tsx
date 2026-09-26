@@ -29,7 +29,8 @@ import ProfilePage from "./pages/profile";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
-
+import { setBaseUrl } from "@workspace/api-client-react";
+setBaseUrl(import.meta.env.VITE_API_BASE_URL ?? null);
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,

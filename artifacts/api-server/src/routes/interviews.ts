@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { db, interviewSessionsTable, interviewAnswersTable, questionsTable, activityLogTable, resumesTable } from "@workspace/db";
+import { db, interviewSessionsTable, interviewAnswersTable, questionsTable, interviewQuestionsTable, activityLogTable, resumesTable } from "@workspace/db";
 import { requireAuth, resolveDbUser } from "../lib/auth";
 import {
   ListInterviewsResponse, CreateInterviewBody, CreateInterviewResponse,
@@ -138,13 +138,104 @@ router.post("/interviews", requireAuth, resolveDbUser, async (req, res): Promise
   const [resume] = await db.select({ id: resumesTable.id }).from(resumesTable)
     .where(and(eq(resumesTable.id, parsed.data.resumeId), eq(resumesTable.userId, userId)));
   if (!resume) { res.status(400).json({ error: "Selected resume not found" }); return; }
-  const questions = await ensureRoleQuestions(parsed.data.category, parsed.data.difficulty);
+  const category = parsed.data.category;
+  const difficulty = parsed.data.difficulty;
+  const roleLabel = ROLE_LABELS[category] || category;
+  const roleGuidance = ROLE_GUIDANCE[category] || `Questions strictly related to ${category}.`;
 
-  // Count questions for this category/difficulty
+  const generationPrompt = [
+    `You are generating a realistic mock interview for a ${roleLabel}.`,
+    `Domain: ${category}.`,
+    `Difficulty: ${difficulty}.`,
+    `Generate exactly 15 genuinely domain-specific interview questions for this individual interview.`,
+    `Every question must directly test knowledge, reasoning, problem solving, practical experience, or professional behavior relevant to this domain.`,
+    `Do not generate generic software questions when the domain is specialized.`,
+    `Use this domain guidance: ${roleGuidance}`,
+    `Mix the interview naturally across technical, scenario, and behavioral questions.`,
+    `For technical roles, prioritize practical engineering and domain knowledge over trivia.`,
+    `For data roles, include realistic data/business reasoning where appropriate.`,
+    `For HR, focus on realistic behavioral and workplace situations rather than technical questions.`,
+    `Difficulty must match ${difficulty}.`,
+    `Do not mention that Gemini generated the questions.`,
+    `Return ONLY a valid JSON array with exactly 15 objects.`,
+    `Each object must contain: text, type, tags, sampleAnswer.`,
+    `type must be exactly one of: "technical", "scenario", "behavioral".`,
+    `tags must be an array of short strings.`,
+    `sampleAnswer must be a concise evaluation reference, not an answer the candidate is expected to memorize.`,
+  ].join("\n");
+
+  const generatedText = await geminiPrompt(generationPrompt);
+  const generated = generatedText
+    ? parseGeminiJson<Array<{
+        text?: string;
+        type?: string;
+        tags?: string[];
+        sampleAnswer?: string;
+      }>>(generatedText)
+    : null;
+
+  if (!Array.isArray(generated)) {
+    res.status(503).json({ error: "Unable to generate interview questions right now" });
+    return;
+  }
+
+  const generatedQuestions = generated
+    .map((item) => ({
+      text: String(item.text || "").trim(),
+      type: String(item.type || "").trim(),
+      tags: Array.isArray(item.tags) ? item.tags.map(String) : [],
+      sampleAnswer: String(item.sampleAnswer || "").trim(),
+    }))
+    .filter((item) =>
+      item.text.length > 10 &&
+      ["technical", "scenario", "behavioral"].includes(item.type),
+    )
+    .filter((item, index, all) =>
+      all.findIndex(
+        (other) => other.text.toLowerCase() === item.text.toLowerCase(),
+      ) === index,
+    )
+    .slice(0, 15);
+
+  if (generatedQuestions.length !== 15) {
+    res.status(503).json({ error: "Gemini did not generate 15 valid interview questions" });
+    return;
+  }
+
+  const insertedQuestions = await db
+    .insert(questionsTable)
+    .values(
+      generatedQuestions.map((question) => ({
+        category,
+        difficulty,
+        text: question.text,
+        type: question.type,
+        tags: question.tags,
+        sampleAnswer: question.sampleAnswer,
+      })),
+    )
+    .returning();
+
+  if (insertedQuestions.length !== 15) {
+    res.status(503).json({ error: "Unable to save generated interview questions" });
+    return;
+  }
+
   const [session] = await db.insert(interviewSessionsTable).values({
-    userId, resumeId: parsed.data.resumeId, category: parsed.data.category, difficulty: parsed.data.difficulty,
-    questionsAsked: Math.min(15, questions.length),
+    userId,
+    resumeId: parsed.data.resumeId,
+    category,
+    difficulty,
+    questionsAsked: 15,
   }).returning();
+
+  await db.insert(interviewQuestionsTable).values(
+    insertedQuestions.map((question, index) => ({
+      interviewId: session.id,
+      questionId: question.id,
+      position: index,
+    })),
+  );
 
   await db.insert(activityLogTable).values({
     userId, type: "interview", title: "Interview Started",
@@ -353,6 +444,7 @@ Return this exact JSON format:
 });
 
 export default router;
+
 
 
 

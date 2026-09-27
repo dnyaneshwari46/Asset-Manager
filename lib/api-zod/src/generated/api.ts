@@ -329,7 +329,8 @@ export const AbandonInterviewResponse = zod.object({
 export const ListQuestionsQueryParams = zod.object({
   "category": zod.coerce.string().optional(),
   "difficulty": zod.coerce.string().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "interviewId": zod.coerce.number().optional()
 })
 
 export const ListQuestionsResponseItem = zod.object({

@@ -10,4 +10,5 @@ export type ListQuestionsParams = {
 category?: string;
 difficulty?: string;
 limit?: number;
+interviewId?: number;
 };

@@ -19,7 +19,7 @@ if (apiKey) {
 export async function geminiPrompt(prompt: string): Promise<string | null> {
   if (!genAI) return null;
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (e) {

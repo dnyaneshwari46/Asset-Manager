@@ -40,13 +40,53 @@ export default function DashboardPage() {
     { subject: 'System Design', A: 65, fullMark: 100 },
   ];
 
-  const progressData = [
-    { name: 'Week 1', score: 40 },
-    { name: 'Week 2', score: 55 },
-    { name: 'Week 3', score: 68 },
-    { name: 'Week 4', score: 75 },
-    { name: 'Week 5', score: (stats?.avgTechnicalScore || 80) },
-  ];
+ const progressData = (() => {
+  const scoredActivity = (activity ?? [])
+    .filter((item) => item.score !== null && item.score !== undefined)
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime()
+    );
+
+  if (scoredActivity.length === 0) {
+    return [
+      { name: "Week 1", score: 0 },
+      { name: "Week 2", score: 0 },
+      { name: "Week 3", score: 0 },
+      { name: "Week 4", score: 0 },
+      { name: "Week 5", score: 0 },
+    ];
+  }
+
+  const now = new Date();
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const start = new Date(now);
+    start.setDate(now.getDate() - (4 - index) * 7);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+
+    const scores = scoredActivity
+      .filter((item) => {
+        const date = new Date(item.createdAt);
+        return date >= start && date < end;
+      })
+      .map((item) => item.score as number);
+
+    return {
+      name: `Week ${index + 1}`,
+      score: scores.length
+        ? Math.round(
+            scores.reduce((sum, score) => sum + score, 0) /
+              scores.length
+          )
+        : 0,
+    };
+  });
+})();
 
   return (
     <AppLayout>
@@ -199,3 +239,5 @@ function StatCard({ title, value, icon: Icon, color }: { title: string, value: s
     </motion.div>
   );
 }
+
+

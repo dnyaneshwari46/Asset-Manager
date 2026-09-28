@@ -59,7 +59,7 @@ export default function DashboardPage() {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/resume"><StatCard title="Resume Score" value={`${stats?.resumeScore || 0}%`} icon={Briefcase} color="text-blue-400" /></Link>
+          <Link href={resumes?.[0] ? `/resume/${resumes[0].id}` : "/resume"}><StatCard title="Resume Score" value={`${stats?.resumeScore || 0}%`} icon={Briefcase} color="text-blue-400" /></Link>
           <Link href="/interview"><StatCard title="Interviews Taken" value={stats?.interviewCount || 0} icon={MessageSquare} color="text-violet-400" /></Link>
           <Link href="/coding"><StatCard title="Coding Problems" value={stats?.totalSubmissions || 0} icon={Code2} color="text-pink-400" /></Link>
           <Link href="/learning"><StatCard title="Avg Tech Score" value={`${Math.round(stats?.avgTechnicalScore || 0)}%`} icon={Target} color="text-emerald-400" /></Link>

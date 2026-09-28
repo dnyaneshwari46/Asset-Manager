@@ -19,8 +19,9 @@ router.get("/dashboard/stats", requireAuth, resolveDbUser, async (req, res): Pro
       .where(eq(interviewSessionsTable.userId, userId)),
   ]);
 
-  const avgTech = interviews.length
-    ? interviews.reduce((s, i) => s + (i.technicalScore ?? 0), 0) / interviews.filter(i => i.technicalScore !== null).length || null
+  const scoredInterviews = interviews.filter(i => i.technicalScore !== null);
+  const avgTech = scoredInterviews.length
+    ? scoredInterviews.reduce((s, i) => s + (i.technicalScore ?? 0), 0) / scoredInterviews.length
     : null;
   const avgComm = interviews.length
     ? interviews.reduce((s, i) => s + (i.communicationScore ?? 0), 0) / interviews.filter(i => i.communicationScore !== null).length || null
@@ -78,3 +79,4 @@ router.get("/dashboard/activity", requireAuth, resolveDbUser, async (req, res): 
 });
 
 export default router;
+

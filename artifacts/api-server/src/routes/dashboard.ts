@@ -19,7 +19,9 @@ router.get("/dashboard/stats", requireAuth, resolveDbUser, async (req, res): Pro
       .where(eq(interviewSessionsTable.userId, userId)),
   ]);
 
-  const scoredInterviews = interviews.filter(i => i.technicalScore !== null);
+  const scoredInterviews = interviews.filter(
+  i => i.status === "completed" && i.technicalScore !== null
+);
   const avgTech = scoredInterviews.length
     ? scoredInterviews.reduce((s, i) => s + (i.technicalScore ?? 0), 0) / scoredInterviews.length
     : null;
